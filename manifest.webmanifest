@@ -1,0 +1,11 @@
+{
+  "name": "Công việc của Thầy",
+  "short_name": "Công việc",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fafaf7",
+  "theme_color": "#ffffff",
+  "lang": "vi",
+  "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]
+}
