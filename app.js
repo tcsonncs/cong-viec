@@ -178,6 +178,7 @@ function taskCard(t) {
 const sortTasks = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (a.prio || 3) - (b.prio || 3);
 
 const quickBar = `<div class="quick"><input id="quick" placeholder="Gõ nhanh: Nộp báo cáo khoa giao cho cô Lan thứ sáu" enterkeyhint="done" autocomplete="off"><button class="btn" id="quick-go">Thêm</button></div>
+<div class="quick"><label class="btn ghost">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost" id="gem-key">Khoá Gemini</button></div>
 <p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>`;
 
 function renderToday() {
@@ -348,6 +349,102 @@ async function importVcf(file) {
   alert(`Đã thêm ${fresh.length} người. Vai trò đang là "Khác", Thầy sửa dần khi cần.`);
 }
 
+/* ---------- Đọc ảnh (giấy viết tay, tin nhắn Zalo) bằng Gemini, Thầy xem lại rồi mới lưu ---------- */
+const KEY_NAME = 'appcv-gemini';
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
+const getKey = () => { try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; } };
+
+function askKey() {
+  const k = prompt('Dán khoá Gemini (bắt đầu bằng AIza). Để trống rồi bấm OK để xoá khoá khỏi máy này.', getKey());
+  if (k === null) return false;
+  try { k.trim() ? localStorage.setItem(KEY_NAME, k.trim()) : localStorage.removeItem(KEY_NAME); } catch { /* bỏ qua */ }
+  return !!k.trim();
+}
+
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * s);
+  c.height = Math.round(bmp.height * s);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+
+async function extractTasks(files) {
+  const now = new Date();
+  const wd = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][now.getDay()];
+  const prompt = `Đây là ảnh chụp trang giấy viết tay hoặc ảnh chụp màn hình tin nhắn Zalo của một giảng viên đại học. Hãy lọc ra các CÔNG VIỆC mà giảng viên cần làm hoặc cần theo dõi.
+Hôm nay là ${wd}, ${toStr(now)}. Đổi mọi hạn dạng tương đối (mai, thứ sáu, cuối tuần...) sang ngày YYYY-MM-DD; không có hạn thì để chuỗi rỗng.
+Quy tắc: chỉ ghi việc có thật trong ảnh, không bịa; không tách một việc thành nhiều việc; giữ đúng tên người như trong ảnh.
+Với tin nhắn Zalo: "contact" là người nhắn; "notes" tóm tắt ý chính của tin nhắn gốc (một hai câu).
+"assignee" chỉ điền khi việc được giao cho người khác làm. "prio": 1 nếu gấp, 2 nếu quan trọng, 3 còn lại.
+"group" chọn một trong: giangday (giảng dạy), nckh (nghiên cứu khoa học), quanly (quản lý, hành chính), giaotiep (gọi, nhắn), thoiquen, canhan.
+Nếu không có việc nào, trả về mảng rỗng.`;
+  const parts = [{ text: prompt }];
+  for (const f of files) parts.push({ inlineData: { mimeType: 'image/jpeg', data: await shrink(f) } });
+  const body = { contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json', responseSchema: {
+    type: 'ARRAY', items: { type: 'OBJECT', required: ['title'], properties: {
+      title: { type: 'STRING' }, due: { type: 'STRING' }, assignee: { type: 'STRING' }, contact: { type: 'STRING' },
+      group: { type: 'STRING', enum: Object.keys(GROUPS) }, prio: { type: 'INTEGER' }, notes: { type: 'STRING' } } } } } };
+  let last = '';
+  for (const model of GEMINI_MODELS) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body) });
+    if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
+    if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
+    if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
+    if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
+    const j = await res.json();
+    const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
+    return JSON.parse(txt);
+  }
+  throw new Error(last || 'Không gọi được Gemini');
+}
+
+function reviewExtracted(list) {
+  if (!list.length) { dlg().innerHTML = `<p>Không tìm thấy công việc nào trong ảnh.</p><div class="actions"><button type="button" class="btn" id="cancel">Đóng</button></div>`; $('#cancel').onclick = () => dlg().close(); return; }
+  const known = name => {
+    const n = (name || '').toLowerCase();
+    const c = n && (data.contacts.find(c => c.name.toLowerCase() === n) || data.contacts.find(c => c.name.toLowerCase().includes(n)));
+    return c ? c.name : (name || '');
+  };
+  const rows = list.map((t, i) => `<div class="card" style="display:block">
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" name="ok${i}" checked> Lưu việc này</label>
+    <input name="title${i}" value="${esc(t.title)}">
+    <div class="row"><div><label>Hạn</label><input type="date" name="due${i}" value="${esc(/^\d{4}-\d{2}-\d{2}$/.test(t.due || '') ? t.due : '')}"></div>
+    <div><label>Nhóm việc</label><select name="group${i}">${opts(GROUPS, GROUPS[t.group] ? t.group : 'quanly')}</select></div></div>
+    <div class="row"><div><label>Giao cho ai</label><input name="assignee${i}" list="dl-a" value="${esc(known(t.assignee))}"></div>
+    <div><label>Cần liên hệ với ai</label><input name="contact${i}" list="dl-a" value="${esc(known(t.contact))}"></div></div>
+    <label>Ghi chú</label><input name="notes${i}" value="${esc(t.notes || '')}"></div>`).join('');
+  dlg().innerHTML = `<form method="dialog" id="xf"><p><b>Tìm thấy ${list.length} việc.</b> Thầy sửa nếu cần, bỏ tích việc không muốn lưu.</p>${rows}${names('dl-a')}
+    <div class="actions"><button type="button" class="btn ghost" id="cancel">Bỏ qua</button><button class="btn" value="save">Lưu các việc đã tích</button></div></form>`;
+  $('#cancel').onclick = () => dlg().close();
+  $('#xf').onsubmit = async e => {
+    const f = new FormData(e.target);
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (!f.get('ok' + i) || !f.get('title' + i).trim()) continue;
+      await store.save('tasks', { title: f.get('title' + i).trim(), due: f.get('due' + i), group: f.get('group' + i), prio: list[i].prio >= 1 && list[i].prio <= 3 ? list[i].prio : 3,
+        status: 'todo', assignee: f.get('assignee' + i).trim(), contact: f.get('contact' + i).trim(), notes: f.get('notes' + i), repeat: 'none', log: [], created: new Date().toISOString() });
+      n++;
+    }
+    if (n) alert(`Đã thêm ${n} việc.`);
+  };
+}
+
+async function importImages(files) {
+  if (!getKey() && !askKey()) return;
+  dlg().innerHTML = `<p>Đang đọc ảnh, chờ khoảng 10–20 giây...</p>`;
+  dlg().showModal();
+  try { reviewExtracted(await extractTasks(files)); }
+  catch (err) {
+    console.error(err);
+    dlg().innerHTML = `<p>${esc(err.message || 'Không đọc được ảnh.')}</p><div class="actions"><button type="button" class="btn" id="cancel">Đóng</button></div>`;
+    $('#cancel').onclick = () => dlg().close();
+  }
+}
+
 /* ---------- Sự kiện ---------- */
 function quickAdd() {
   const q = $('#quick');
@@ -358,13 +455,14 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
   else if (el.dataset.contact) openContact(data.contacts.find(c => c.id === el.dataset.contact));
   else if (el.id === 'quick-go') quickAdd();
   else if (el.id === 'add-contact') openContact({});
+  else if (el.id === 'gem-key') askKey();
   else if (el.id === 'login') store.login();
   else if (el.id === 'btn-user') store.logout();
 });
@@ -374,6 +472,10 @@ document.addEventListener('change', async e => {
     const file = e.target.files[0];
     e.target.value = '';
     if (file) await importVcf(file);
+  } else if (e.target.id === 'img-file') {
+    const files = [...e.target.files].slice(0, 6);
+    e.target.value = '';
+    if (files.length) await importImages(files);
   } else if (e.target.dataset.done) {
     const t = data.tasks.find(x => x.id === e.target.dataset.done);
     const done = e.target.checked;
