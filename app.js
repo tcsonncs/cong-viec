@@ -178,7 +178,7 @@ function taskCard(t) {
 const sortTasks = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (a.prio || 3) - (b.prio || 3);
 
 const quickBar = `<div class="quick"><input id="quick" placeholder="Gõ nhanh: Nộp báo cáo khoa giao cho cô Lan thứ sáu" enterkeyhint="done" autocomplete="off"><button class="btn" id="quick-go">Thêm</button></div>
-<div class="quick"><label class="btn ghost">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost" id="gem-key">Khoá Gemini</button></div>
+<div class="quick"><label class="btn ghost">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost" id="paste-img">Dán ảnh</button><button class="btn ghost" id="gem-key">Khoá Gemini</button></div>
 <p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>`;
 
 function renderToday() {
@@ -351,7 +351,7 @@ async function importVcf(file) {
 
 /* ---------- Đọc ảnh (giấy viết tay, tin nhắn Zalo) bằng Gemini, Thầy xem lại rồi mới lưu ---------- */
 const KEY_NAME = 'appcv-gemini';
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
 const getKey = () => { try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; } };
 
 function askKey() {
@@ -388,12 +388,15 @@ Nếu không có việc nào, trả về mảng rỗng.`;
       title: { type: 'STRING' }, due: { type: 'STRING' }, assignee: { type: 'STRING' }, contact: { type: 'STRING' },
       group: { type: 'STRING', enum: Object.keys(GROUPS) }, prio: { type: 'INTEGER' }, notes: { type: 'STRING' } } } } } };
   let last = '';
-  for (const model of GEMINI_MODELS) {
+  // Mô hình đang quá tải (503) thì thử mô hình khác, hết một vòng thì chờ vài giây rồi thử lại.
+  for (const model of [...GEMINI_MODELS, ...GEMINI_MODELS]) {
+    if (last.startsWith('Gemini đang quá tải') && model === GEMINI_MODELS[0]) await new Promise(r => setTimeout(r, 4000));
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body) });
     if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
     if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
     if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
+    if (res.status === 503 || res.status === 500) { last = 'Gemini đang quá tải (mã ' + res.status + '). Thầy thử lại sau vài phút.'; continue; }
     if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
     const j = await res.json();
     const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
@@ -455,7 +458,7 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
@@ -463,6 +466,16 @@ document.addEventListener('click', async e => {
   else if (el.id === 'quick-go') quickAdd();
   else if (el.id === 'add-contact') openContact({});
   else if (el.id === 'gem-key') askKey();
+  else if (el.id === 'paste-img') {
+    try {
+      const files = [];
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find(t => t.startsWith('image/'));
+        if (type) files.push(new File([await item.getType(type)], 'dan.png', { type }));
+      }
+      if (files.length) await importImages(files); else alert('Chưa có ảnh nào được sao chép. Thầy chép ảnh trước (giữ ngón tay lên ảnh, chọn Sao chép; trên máy tính bấm chuột phải, chọn Copy image).');
+    } catch { alert('Không dán được. Thầy chép ảnh trước, rồi bấm Dán ảnh và cho phép khi máy hỏi. Trên máy tính có thể bấm Ctrl+V.'); }
+  }
   else if (el.id === 'login') store.login();
   else if (el.id === 'btn-user') store.logout();
 });
@@ -482,6 +495,15 @@ document.addEventListener('change', async e => {
     await store.save('tasks', { ...t, status: done ? 'done' : 'todo', doneAt: done ? new Date().toISOString() : null });
   } else if (e.target.id === 'f-group') { filter.group = e.target.value; render(); }
   else if (e.target.id === 'f-status') { filter.status = e.target.value; render(); }
+});
+
+// Ctrl+V (hoặc Dán) khi đang có ảnh trong bộ nhớ tạm: đọc ảnh luôn, không cần bấm nút.
+document.addEventListener('paste', e => {
+  if (!signedIn || dlg().open) return;
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  e.preventDefault();
+  importImages(files.slice(0, 6));
 });
 
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'quick') { e.preventDefault(); quickAdd(); } });
