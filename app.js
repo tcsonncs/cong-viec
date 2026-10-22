@@ -215,7 +215,8 @@ function renderContacts() {
       <div class="chips">${c.role ? `<span class="chip">${esc(c.role)}</span>` : ''}${c.unit ? `<span class="chip">${esc(c.unit)}</span>` : ''}</div>
       ${c.note ? `<div class="log">${esc(c.note)}</div>` : ''}</div><div>${links}</div></div>`;
   }).join('');
-  return `<div class="quick"><button class="btn" id="add-contact">+ Thêm người</button></div>` + (cards || '<p class="empty">Chưa có ai trong danh bạ.</p>');
+  return `<div class="quick"><button class="btn" id="add-contact">+ Thêm người</button>
+    <label class="btn ghost">Nhập từ file .vcf<input type="file" id="vcf-file" accept=".vcf,text/vcard,text/x-vcard" hidden></label></div>` + (cards || '<p class="empty">Chưa có ai trong danh bạ.</p>');
 }
 
 function render() {
@@ -312,6 +313,41 @@ function openContact(c) {
   };
 }
 
+/* ---------- Nhập danh bạ từ file .vcf (xuất từ iPhone, iCloud hoặc Google Danh bạ) ---------- */
+function parseVcf(text) {
+  const lines = text.replace(/\r/g, '').replace(/\n[ \t]/g, '').split('\n');
+  const out = [];
+  let cur = null;
+  for (const line of lines) {
+    if (/^BEGIN:VCARD/i.test(line)) cur = {};
+    else if (/^END:VCARD/i.test(line)) { if (cur && cur.name) out.push(cur); cur = null; }
+    else if (cur) {
+      const i = line.indexOf(':');
+      if (i < 0) continue;
+      const key = line.slice(0, i).split(';')[0].replace(/^item\d+\./i, '').toUpperCase();
+      const val = line.slice(i + 1).replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\n/gi, ' ').trim();
+      if (!val) continue;
+      if (key === 'FN') cur.name = val;
+      else if (key === 'N' && !cur.name) cur.name = val.split(';').reverse().join(' ').trim();
+      else if (key === 'TEL' && !cur.phone) cur.phone = val.replace(/[^\d+]/g, '');
+      else if (key === 'EMAIL' && !cur.email) cur.email = val;
+      else if (key === 'ORG') cur.unit = [val.replace(/;/g, ' ').trim(), cur.unit].filter(Boolean).join(' – ');
+      else if (key === 'TITLE') cur.unit = [cur.unit, val].filter(Boolean).join(' – ');
+    }
+  }
+  return out;
+}
+
+async function importVcf(file) {
+  const found = parseVcf(await file.text());
+  const have = new Set(data.contacts.map(c => c.name.toLowerCase() + '|' + (c.phone || '')));
+  const fresh = found.filter(c => !have.has(c.name.toLowerCase() + '|' + (c.phone || '')));
+  if (!fresh.length) { alert(found.length ? 'Tất cả người trong file đã có trong danh bạ.' : 'Không đọc được người nào trong file.'); return; }
+  if (!confirm(`Thêm ${fresh.length} người vào danh bạ (bỏ qua ${found.length - fresh.length} người đã có)?`)) return;
+  for (const c of fresh) await store.save('contacts', { role: 'Khác', zalo: c.phone || '', ...c });
+  alert(`Đã thêm ${fresh.length} người. Vai trò đang là "Khác", Thầy sửa dần khi cần.`);
+}
+
 /* ---------- Sự kiện ---------- */
 function quickAdd() {
   const q = $('#quick');
@@ -334,7 +370,11 @@ document.addEventListener('click', async e => {
 });
 
 document.addEventListener('change', async e => {
-  if (e.target.dataset.done) {
+  if (e.target.id === 'vcf-file') {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) await importVcf(file);
+  } else if (e.target.dataset.done) {
     const t = data.tasks.find(x => x.id === e.target.dataset.done);
     const done = e.target.checked;
     await store.save('tasks', { ...t, status: done ? 'done' : 'todo', doneAt: done ? new Date().toISOString() : null });
