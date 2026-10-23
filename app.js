@@ -1,7 +1,7 @@
 import * as cfg from './firebase-config.js';
-import { initMoney } from './chitieu.js?v=7';
+import { initMoney } from './chitieu.js?v=8';
 const firebaseConfig = cfg.firebaseConfig;
-const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur'];
+const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
 const vapidKey = cfg.vapidKey || '';
 

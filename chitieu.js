@@ -12,6 +12,8 @@ const DEFAULT_CATS = [
   ['Lương', '💰', 'thu', '#4f7a55'], ['Thù lao, giờ giảng', '🧾', 'thu', '#3f8f6f'], ['Dạy thêm', '✏️', 'thu', '#6a9a3f'], ['Thu khác', '➕', 'thu', '#8a8178']
 ];
 
+import { initSheet } from './bangthang.js?v=8';
+
 export function initMoney(ctx) {
   const { $, esc, pad, toStr, today, fmt, uid } = ctx;
   const data = () => ctx.data();
@@ -29,7 +31,7 @@ export function initMoney(ctx) {
   };
   const KINDS = { tieudung: 'Ví tiêu dùng', dautu: 'Ví đầu tư tích lũy', khac: 'Ví khác' };
   // Ví cũ chưa chọn loại: tên giống quỹ, chứng khoán thì xếp vào đầu tư; ví đang hiện là tiêu dùng; còn lại là khác. Thầy sửa được trong hộp sửa ví.
-  const kindOf = w => w.kind || (/chứng khoán|topi|binance|phường|quỹ/i.test(w.name) ? 'dautu' : (w.archived || w.ignore) ? 'khac' : 'tieudung');
+  const kindOf = w => w.kind || (/chứng khoán|topi|binance|phường|quỹ|tk bidv|tk ocb/i.test(w.name) ? 'dautu' : (w.archived || w.ignore) ? 'khac' : 'tieudung');
   // Chuyển ví chia 3 nhóm: nộp vào quỹ đầu tư, rút từ quỹ đầu tư, khác.
   const MOVES = { rut: 'Rút tiền từ quỹ đầu tư', nop: 'Nộp tiền vào quỹ đầu tư', khac: 'Chuyển khác' };
   const moveKind = t => {
@@ -217,6 +219,7 @@ export function initMoney(ctx) {
       body = acc('Danh mục', d.cats.length, `${cats}<p class="hint">Bấm vào danh mục để sửa hoặc xoá; bấm "+ Thêm" để thêm vào phần Chi phí hoặc Thu nhập.</p>`)
         + acc('Khoản lặp lại hằng tháng', d.recur.length, `${rec || '<div class="note soon">Ví dụ: tiền điện, internet, học phí, lương. App tự ghi vào đúng ngày mỗi tháng.</div>'}<div class="quick"><button class="btn ghost sm" data-m="recur-add">+ Thêm khoản lặp lại</button></div>`)
         + acc('Xuất Excel', null, `<p class="hint" style="margin-top:0">Tạo file Excel của tháng <b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>: danh sách giao dịch, tổng hợp theo danh mục, số dư các ví. Đổi tháng ở thẻ Giao dịch hoặc Thống kê.</p><div class="quick"><button class="btn ghost" data-m="export">Tải file Excel tháng này</button></div>`)
+        + acc('Bảng tháng theo mẫu Excel', null, `<p class="hint" style="margin-top:0">${(d.tpl || []).length ? `Mẫu đang dùng: trang <b>${esc(d.tpl[0].name)}</b>. ` : 'Chưa có mẫu. '}Nạp một trang tháng từ file Excel của Thầy, app sẽ điền số thu, chi, nộp và rút quỹ của tháng đang xem (<b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>) vào đúng ô, đơn vị nghìn đồng. Mỗi tháng Thầy nên nạp lại bằng trang tháng liền trước.</p><div class="quick"><label class="btn ghost">Nạp mẫu từ file Excel<input type="file" id="m-tpl" accept=".xlsx,.xlsm" hidden></label>${(d.tpl || []).length ? '<button class="btn ghost" data-m="sheet">Tạo bảng tháng này</button>' : ''}</div>`)
         + acc('Nhập dữ liệu từ app cũ', null, `<p class="hint" style="margin-top:0">Chọn file dữ liệu đã chuyển từ Money Manager. Khoản nào đã có thì bỏ qua, nên nhập lại không bị trùng.</p><div class="quick"><label class="btn ghost">Chọn file để nhập<input type="file" id="m-import" accept=".json,application/json" hidden></label></div>`);
     } else {
       const plain = list.filter(t => t.type !== 'chuyen');
@@ -439,6 +442,9 @@ export function initMoney(ctx) {
     }
   }
 
+  const sheet = initSheet({ $, esc, dlg, data, store, walletOf, catOf, kindOf, moveKind, counted, loadXlsx,
+    rangeOfMonth: (y, m) => [ymd(y, m - 1, 1), ymd(y, m - 1, new Date(y, m, 0).getDate())] });
+
   async function setup() {
     for (const n of DEFAULT_WALLETS) await store().save('wallets', { name: n, start: 0 });
     for (const [name, emoji, type, color] of DEFAULT_CATS) await store().save('cats', { name, emoji, type, color, budget: 0 });
@@ -469,10 +475,10 @@ export function initMoney(ctx) {
   }
 
   document.addEventListener('change', async e => {
-    if (e.target.id !== 'm-import') return;
-    const file = e.target.files[0];
+    if (e.target.id !== 'm-import' && e.target.id !== 'm-tpl') return;
+    const file = e.target.files[0], id = e.target.id;
     e.target.value = '';
-    if (file) await importFile(file);
+    if (file) await (id === 'm-tpl' ? sheet.loadTemplate(file) : importFile(file));
   });
 
   /* ----- Sự kiện ----- */
@@ -494,6 +500,7 @@ export function initMoney(ctx) {
     else if (a === 'recur') openRecur(d.recur.find(r => r.id === id));
     else if (a === 'recur-add') { if (!d.wallets.length || !d.cats.length) alert('Thầy bấm "Tạo ví và danh mục mẫu" trước.'); else openRecur({}); }
     else if (a === 'export') exportMonth();
+    else if (a === 'sheet') sheet.makeSheet(st.ref.getFullYear(), st.ref.getMonth() + 1);
     else if (a === 'setup') setup();
   });
 
