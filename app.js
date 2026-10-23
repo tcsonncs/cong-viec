@@ -176,12 +176,12 @@ function taskCard(t) {
     t.prio && t.prio < 3 && `<span class="chip ${t.prio === 1 ? 'red' : 'amber'}">${PRIO[t.prio]}</span>`,
     t.status === 'waiting' && `<span class="chip amber">Chờ người khác</span>`,
     t.status === 'doing' && `<span class="chip green">Đang làm</span>`,
-    t.group && `<span class="chip">${esc(GROUPS[t.group])}</span>`,
+    t.group && GROUPS[t.group] && `<span class="chip grp">${esc(GROUPS[t.group])}</span>`,
     t.assignee && `<span class="chip">Giao: ${esc(t.assignee)}</span>`,
     t.contact && `<span class="chip">Liên hệ: ${esc(t.contact)}</span>`,
     t.repeat && t.repeat !== 'none' && `<span class="chip">${REPEAT[t.repeat]}</span>`
   ].filter(Boolean).join('');
-  return `<div class="card${over ? ' over' : ''}${t.status === 'done' ? ' done' : ''}" data-id="${t.id}">
+  return `<div class="card g-${t.group || 'none'}${over ? ' over' : ''}${t.status === 'done' ? ' done' : ''}" data-id="${t.id}">
     <input type="checkbox" class="chk" data-done="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="Đánh dấu xong">
     <div class="body" data-open="${t.id}"><div class="t">${esc(t.title)}</div><div class="chips">${chips}</div></div>
   </div>`;
@@ -189,10 +189,12 @@ function taskCard(t) {
 
 const sortTasks = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (a.prio || 3) - (b.prio || 3);
 
-const quickBar = `<div class="quick"><input id="quick" placeholder="Gõ nhanh: Nộp báo cáo khoa giao cho cô Lan thứ sáu" enterkeyhint="done" autocomplete="off"><button class="btn" id="quick-go">Thêm</button></div>
-<div class="quick"><label class="btn ghost">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost" id="paste-img">Dán ảnh</button><button class="btn ghost" id="gem-key">Khoá Gemini</button></div>
-<div class="quick"><label class="btn ghost">Nhập việc từ file (do trợ lý soạn)<input type="file" id="json-file" accept=".json,application/json" hidden></label></div>
-<p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>`;
+const quickBar = `<div class="hero"><div class="quick"><input id="quick" placeholder="Gõ nhanh: Nộp báo cáo khoa giao cho cô Lan thứ sáu" enterkeyhint="done" autocomplete="off"><button class="btn" id="quick-go">Thêm</button></div>
+<p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>
+<details class="tools"><summary>Thêm việc từ ảnh hoặc file</summary>
+<div class="quick"><label class="btn ghost sm">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost sm" id="paste-img">Dán ảnh</button><button class="btn ghost sm" id="gem-key">Khoá Gemini</button></div>
+<div class="quick"><label class="btn ghost sm">Nhập việc từ file (do trợ lý soạn)<input type="file" id="json-file" accept=".json,application/json" hidden></label></div>
+</details></div>`;
 
 function renderToday() {
   const td = today();
@@ -200,13 +202,18 @@ function renderToday() {
   const over = open.filter(t => t.due && t.due < td).sort(sortTasks);
   const now = open.filter(t => t.due === td).sort(sortTasks);
   const waiting = open.filter(t => t.status === 'waiting' && t.due !== td && !(t.due && t.due < td));
-  const sec = (title, list, cls = '') => list.length ? `<h2 class="${cls}">${title} (${list.length})</h2>${list.map(taskCard).join('')}` : '';
+  const sec = (title, list, cls = '') => list.length ? `<h2 class="${cls}">${title} <span class="count">${list.length}</span></h2>${list.map(taskCard).join('')}` : '';
+  const habDone = data.habits.filter(h => (h.days || []).includes(td)).length;
   const hab = data.habits.length
-    ? `<h2>Thói quen hôm nay (${data.habits.filter(h => (h.days || []).includes(td)).length}/${data.habits.length})</h2>${data.habits.map(h => habitCard(h)).join('')}` : '';
+    ? `<h2>Thói quen hôm nay <span class="count">${habDone}/${data.habits.length}</span></h2>${data.habits.map(h => habitCard(h)).join('')}` : '';
   const html = sec('Quá hạn', over, 'red') + sec('Hôm nay', now) + sec('Đang chờ người khác', waiting) + hab;
-  return quickBar +
-    `<div class="note">Lịch hôm nay từ Google Calendar và điểm tin sáng sẽ có ở các giai đoạn sau.</div>` +
-    (html || '<p class="empty">Hôm nay chưa có việc đến hạn. Gõ việc mới ở ô trên.</p>');
+  const stats = `<div class="stats">
+    <div class="stat${over.length ? ' red' : ''}"><b>${over.length}</b><span>Quá hạn</span></div>
+    <div class="stat amber"><b>${now.length}</b><span>Hôm nay</span></div>
+    <div class="stat green"><b>${habDone}/${data.habits.length}</b><span>Thói quen</span></div></div>`;
+  return stats + quickBar +
+    (html || '<div class="empty"><span class="ico">🎉</span>Hôm nay chưa có việc đến hạn.<br>Gõ việc mới ở ô phía trên.</div>') +
+    `<div class="note soon">Lịch Google Calendar và điểm tin sáng sẽ hiện ở đây ở các giai đoạn sau.</div>`;
 }
 
 function renderTasks() {
@@ -216,7 +223,7 @@ function renderTasks() {
   return quickBar + `<div class="filters">
     <select id="f-group"><option value="">Mọi nhóm</option>${opts(GROUPS, filter.group)}</select>
     <select id="f-status"><option value="open"${filter.status === 'open' ? ' selected' : ''}>Chưa xong</option><option value="done"${filter.status === 'done' ? ' selected' : ''}>Đã xong (lưu trữ)</option></select>
-  </div>` + (list.map(taskCard).join('') || '<p class="empty">Không có việc nào.</p>');
+  </div>` + (list.map(taskCard).join('') || '<div class="empty"><span class="ico">📭</span>Không có việc nào.</div>');
 }
 
 /* ---------- Việc lặp lại ---------- */
@@ -260,12 +267,12 @@ function habitCard(h, full) {
   const td = today();
   const s = new Set(h.days || []);
   const c = streak(h);
-  const dots = [6, 5, 4, 3, 2, 1, 0].map(n => (s.has(dayStr(n)) ? '●' : '○')).join('');
-  return `<div class="card"><input type="checkbox" class="chk" data-hab="${h.id}"${s.has(td) ? ' checked' : ''} aria-label="Đã làm hôm nay">
+  const dots = [6, 5, 4, 3, 2, 1, 0].map(n => `<i${s.has(dayStr(n)) ? ' class="on"' : ''}></i>`).join('');
+  return `<div class="card g-thoiquen"><input type="checkbox" class="chk" data-hab="${h.id}"${s.has(td) ? ' checked' : ''} aria-label="Đã làm hôm nay">
     <div class="body"><div class="t">${esc(h.name)}</div><div class="chips">
       ${c ? `<span class="chip green">Chuỗi ${c} ngày</span>` : '<span class="chip">Chưa có chuỗi</span>'}
-      ${full ? `<span class="chip" title="7 ngày gần nhất, hôm nay ở bên phải" style="letter-spacing:2px">${dots}</span>` : ''}</div></div>
-    ${full ? `<button class="btn ghost" data-hab-del="${h.id}">Xoá</button>` : ''}</div>`;
+      ${full ? `<span class="dots" title="7 ngày gần nhất, hôm nay ở bên phải">${dots}</span>` : ''}</div></div>
+    ${full ? `<button class="btn ghost sm" data-hab-del="${h.id}">Xoá</button>` : ''}</div>`;
 }
 
 function renderHabits() {
@@ -281,7 +288,7 @@ function renderHabits() {
       <div class="quick" style="margin-top:8px"><button class="btn ghost" id="enable-push">${perm === 'granted' ? 'Cập nhật thông báo trên thiết bị này' : 'Bật thông báo trên thiết bị này'}</button></div></div>` : '';
   return `<div class="quick"><button class="btn" id="add-habit">+ Thêm thói quen</button></div>`
     + (data.habits.map(h => habitCard(h, true)).join('')
-      || '<p class="empty">Chưa có thói quen nào.</p><div class="quick"><button class="btn ghost" id="sample-habits">Thêm 3 thói quen mẫu: đọc sách, thể dục, tập piano</button></div>')
+      || '<div class="empty"><span class="ico">🌱</span>Chưa có thói quen nào.</div><div class="quick"><button class="btn ghost" id="sample-habits">Thêm 3 thói quen mẫu: đọc sách, thể dục, tập piano</button></div>')
     + `<h2>Tổng kết 7 ngày qua</h2><div class="note"><ul style="margin:0;padding-left:18px">
       <li>Việc đã xong: <b>${doneWeek.length}</b></li>
       <li>Việc đang quá hạn: <b class="${over.length ? 'red' : ''}">${over.length}</b></li>
@@ -297,24 +304,28 @@ function renderContacts() {
       c.zalo && `<a href="https://zalo.me/${esc(String(c.zalo).replace(/\D/g, ''))}" target="_blank" rel="noopener">Zalo</a>`,
       c.email && `<a href="mailto:${esc(c.email)}">Email</a>`
     ].filter(Boolean).join('');
-    return `<div class="card contact"><div class="body" data-contact="${c.id}"><div class="t">${esc(c.name)}</div>
+    const ini = (c.name.trim().split(/\s+/).pop() || '?')[0].toUpperCase();
+    return `<div class="card contact"><div class="avatar">${esc(ini)}</div><div class="body" data-contact="${c.id}"><div class="t">${esc(c.name)}</div>
       <div class="chips">${c.role ? `<span class="chip">${esc(c.role)}</span>` : ''}${c.unit ? `<span class="chip">${esc(c.unit)}</span>` : ''}</div>
-      ${c.note ? `<div class="log">${esc(c.note)}</div>` : ''}</div><div>${links}</div></div>`;
+      ${c.note ? `<div class="log">${esc(c.note)}</div>` : ''}</div><div class="links">${links}</div></div>`;
   }).join('');
   return `<div class="quick"><button class="btn" id="add-contact">+ Thêm người</button>
-    <label class="btn ghost">Nhập từ file .vcf<input type="file" id="vcf-file" accept=".vcf,text/vcard,text/x-vcard" hidden></label></div>` + (cards || '<p class="empty">Chưa có ai trong danh bạ.</p>');
+    <label class="btn ghost">Nhập từ file .vcf<input type="file" id="vcf-file" accept=".vcf,text/vcard,text/x-vcard" hidden></label></div>` + (cards || '<div class="empty"><span class="ico">👥</span>Chưa có ai trong danh bạ.</div>');
 }
 
 function render() {
   const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', contacts: 'Danh bạ' };
   $('#title').textContent = titles[view];
+  const nd = new Date();
+  $('#sub').textContent = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][nd.getDay()] + ', ' + fmt(toStr(nd));
+  $('#fab').hidden = !signedIn || view === 'habits';
   document.querySelectorAll('.bottom button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
   const bu = $('#btn-user');
   bu.hidden = store.mode !== 'firebase' || !signedIn;
   bu.textContent = 'Đăng xuất';
   const main = $('#main');
   if (!signedIn) {
-    main.innerHTML = `<div class="login"><p>Đăng nhập bằng tài khoản Google để xem công việc.</p><button class="btn" id="login">Đăng nhập Google</button></div>`;
+    main.innerHTML = `<div class="login"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h9"/></svg></div><h2 style="justify-content:center;margin-top:0">Công việc của Thầy</h2><p>Đăng nhập bằng tài khoản Google để xem công việc.</p><button class="btn" id="login">Đăng nhập Google</button></div>`;
     return;
   }
   const keep = document.activeElement && document.activeElement.id === 'quick' ? $('#quick').value : null;
@@ -557,12 +568,16 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#fab,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
   else if (el.dataset.contact) openContact(data.contacts.find(c => c.id === el.dataset.contact));
   else if (el.id === 'quick-go') quickAdd();
+  else if (el.id === 'fab') {
+    if (view === 'contacts') openContact({});
+    else openTask({ title: '', due: view === 'today' ? today() : '', group: view === 'tasks' && filter.group ? filter.group : 'quanly', prio: 3, status: 'todo' });
+  }
   else if (el.id === 'add-contact') openContact({});
   else if (el.id === 'gem-key') askKey();
   else if (el.id === 'enable-push') {
