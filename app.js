@@ -1,5 +1,8 @@
 import * as cfg from './firebase-config.js';
+import { initMoney } from './chitieu.js?v=6';
 const firebaseConfig = cfg.firebaseConfig;
+const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur'];
+const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
 const vapidKey = cfg.vapidKey || '';
 
 /* ---------- Hằng số ---------- */
@@ -45,14 +48,14 @@ function toggleTheme() {
 
 /* ---------- Kho dữ liệu: chế độ máy (localStorage) ---------- */
 function makeLocalStore() {
-  let data = { tasks: [], contacts: [], habits: [] };
+  let data = emptyData();
   let onChange = () => {};
   const persist = () => localStorage.setItem('appcv', JSON.stringify(data));
   return {
     mode: 'local',
     async init(cb, onAuth) {
       onChange = cb;
-      try { data = { tasks: [], contacts: [], habits: [], ...JSON.parse(localStorage.getItem('appcv') || '{}') }; } catch { /* dữ liệu hỏng thì bắt đầu mới */ }
+      try { data = { ...emptyData(), ...JSON.parse(localStorage.getItem('appcv') || '{}') }; } catch { /* dữ liệu hỏng thì bắt đầu mới */ }
       onAuth(true, null);
       onChange(data);
     },
@@ -79,7 +82,7 @@ async function makeFirebaseStore(cfg) {
   const app = appM.initializeApp(cfg);
   const auth = authM.getAuth(app);
   const db = fsM.getFirestore(app);
-  const data = { tasks: [], contacts: [], habits: [] };
+  const data = emptyData();
   let unsubs = [];
   let user = null;
   return {
@@ -88,9 +91,9 @@ async function makeFirebaseStore(cfg) {
       authM.onAuthStateChanged(auth, u => {
         unsubs.forEach(f => f()); unsubs = [];
         user = u;
-        data.tasks = []; data.contacts = []; data.habits = [];
+        COLS.forEach(c => { data[c] = []; });
         if (u) {
-          for (const col of ['tasks', 'contacts', 'habits']) {
+          for (const col of COLS) {
             unsubs.push(fsM.onSnapshot(fsM.collection(db, 'users', u.uid, col), snap => {
               data[col] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
               cb(data);
@@ -127,7 +130,7 @@ async function makeFirebaseStore(cfg) {
 
 /* ---------- Trạng thái ---------- */
 let store;
-let data = { tasks: [], contacts: [], habits: [] };
+let data = emptyData();
 let view = 'today';
 let filter = { group: '', status: 'open' };
 let signedIn = false;
@@ -331,7 +334,7 @@ function renderContacts() {
 }
 
 function render() {
-  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', contacts: 'Danh bạ' };
+  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', money: 'Chi tiêu', contacts: 'Danh bạ' };
   $('#title').textContent = titles[view];
   const nd = new Date();
   $('#sub').textContent = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][nd.getDay()] + ', ' + fmt(toStr(nd));
@@ -346,7 +349,7 @@ function render() {
     return;
   }
   const keep = document.activeElement && document.activeElement.id === 'quick' ? $('#quick').value : null;
-  main.innerHTML = { today: renderToday, tasks: renderTasks, habits: renderHabits, contacts: renderContacts }[view]() +
+  main.innerHTML = { today: renderToday, tasks: renderTasks, habits: renderHabits, money: () => money.render(), contacts: renderContacts }[view]() +
     (store.mode === 'local' ? `<div class="note">Đang ở <b>chế độ máy</b>: dữ liệu chỉ lưu trong trình duyệt này, chưa đồng bộ điện thoại và máy tính.</div>` : '');
   if (keep !== null) { const q = $('#quick'); q.value = keep; q.focus(); }
 }
@@ -594,6 +597,7 @@ document.addEventListener('click', async e => {
   else if (el.id === 'theme') toggleTheme();
   else if (el.id === 'fab') {
     if (view === 'contacts') openContact({});
+    else if (view === 'money') money.openTx();
     else openTask({ title: '', due: view === 'today' ? today() : '', group: view === 'tasks' && filter.group ? filter.group : 'quanly', prio: 3, status: 'todo' });
   }
   else if (el.id === 'add-contact') openContact({});
@@ -669,6 +673,7 @@ document.addEventListener('paste', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'quick') { e.preventDefault(); quickAdd(); } });
 
 /* ---------- Khởi động ---------- */
+const money = initMoney({ $, esc, pad, toStr, today, fmt, uid, data: () => data, store: () => store, render: () => render() });
 paintTheme();
 (async function start() {
   try {
@@ -677,6 +682,6 @@ paintTheme();
     console.error(err);
     store = makeLocalStore();
   }
-  await store.init(d => { data = d; render(); }, (ok, u) => { signedIn = ok; userInfo = u; render(); });
+  await store.init(d => { data = d; render(); if (signedIn) money.tick(); },(ok, u) => { signedIn = ok; userInfo = u; render(); });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

@@ -1,5 +1,5 @@
-﻿const CACHE = 'appcv-v5';
-const SHELL = ['./', './index.html', './style.css', './app.js', './firebase-config.js', './icon.svg', './manifest.webmanifest'];
+﻿const CACHE = 'appcv-v6';
+const SHELL = ['./', './index.html', './style.css', './app.js', './chitieu.js','./firebase-config.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
