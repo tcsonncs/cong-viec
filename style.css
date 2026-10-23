@@ -290,3 +290,18 @@ input.big{font-size:1.6rem;font-weight:800;text-align:right}
 @media (min-width:600px){.donutwrap{flex-direction:row}.donut{flex:none}}
 
 .stats.m{grid-template-columns:repeat(3,minmax(0,1fr))}
+.addchip{border-style:dashed;color:var(--accent);font-weight:700}
+.seg.sub{margin-top:.2rem}
+.hero.totalbox{text-align:center;margin-top:.6rem}
+.totalbox span{display:block;color:var(--mute);font-size:.85rem;font-weight:650}
+.totalbox b{display:block;font-size:1.9rem;font-weight:800;margin:.1rem 0}
+.totalbox em{font-style:normal;font-size:.78rem;color:var(--mute)}
+details.acc{background:var(--card);border:1px solid var(--line);border-radius:1rem;margin:.6rem 0;overflow:hidden}
+details.acc summary{display:flex;justify-content:space-between;align-items:center;padding:.9rem 1rem;cursor:pointer;font-weight:700;list-style:none}
+details.acc summary::-webkit-details-marker{display:none}
+details.acc summary::after{content:"?";font-size:1.4rem;color:var(--mute);margin-left:.6rem;transition:transform .15s}
+details.acc[open] summary::after{transform:rotate(90deg)}
+details.acc summary span{flex:1}
+details.acc summary em{font-style:normal;font-size:.78rem;background:var(--soft);color:var(--mute);border-radius:1rem;padding:.05rem .55rem}
+details.acc .accb{padding:0 1rem 1rem;border-top:1px dashed var(--line);padding-top:.7rem}
+details.acc[open]{border-color:var(--frame,var(--accent))}

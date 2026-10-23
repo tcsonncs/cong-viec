@@ -77,6 +77,11 @@ function makeLocalStore() {
       data[col] = data[col].filter(x => x.id !== id);
       persist(); onChange(data);
     },
+    async removeMany(col, ids) {
+      const s = new Set(ids);
+      data[col] = data[col].filter(x => !s.has(x.id));
+      persist(); onChange(data);
+    },
     exportAll: () => data
   };
 }
@@ -158,6 +163,16 @@ async function makeFirebaseStore(cfg) {
         const b = fsM.writeBatch(db);
         items.slice(i, i + 400).forEach(x => b.set(fsM.doc(db, 'users', user.uid, col, x.id), x));
         await b.commit();
+      }
+    },
+    // Xoá nhiều giao dịch một lượt (gom theo tháng, mỗi tháng một lần ghi).
+    async removeMany(col, ids) {
+      if (col !== 'txs') { for (const id of ids) await this.remove(col, id); return; }
+      const s = new Set(ids), by = {};
+      data.txs.filter(x => s.has(x.id)).forEach(x => { (by[x.date.slice(0, 7)] = by[x.date.slice(0, 7)] || []).push(x.id); });
+      for (const [ym, list] of Object.entries(by)) {
+        const args = list.flatMap(id => [new fsM.FieldPath('items', id), fsM.deleteField()]);
+        await fsM.updateDoc(fsM.doc(db, 'users', user.uid, 'txm', ym), ...args);
       }
     },
     async remove(col, id) {

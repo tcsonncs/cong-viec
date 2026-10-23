@@ -17,7 +17,7 @@ export function initMoney(ctx) {
   const data = () => ctx.data();
   const store = () => ctx.store();
   const dlg = () => $('#dlg');
-  const st = { period: 'month', ref: new Date(), tab: 'chi' };
+  const st = { period: 'month', ref: new Date(), tab: 'chi', sub: 'tx', limit: 60 };
 
   const vnd = n => Math.round(n || 0).toLocaleString('vi-VN') + ' ₫';
   // Ô tóm tắt hẹp: số lớn viết gọn (triệu, tỷ); danh sách và biểu đồ vẫn hiện đủ số.
@@ -60,7 +60,10 @@ export function initMoney(ctx) {
 
   const inRange = (s, e) => data().txs.filter(t => t.date >= s && t.date <= e);
   // Khoản thuộc ví "Không tính vào tổng" (vay mượn, đầu tư…) vẫn hiện trong danh sách nhưng không cộng vào thu, chi, biểu đồ, ngân sách.
-  const counted = t => { const w = walletOf(t.wallet); return !(w && w.ignore); };
+  const hiddenW = w => !!(w.archived || w.ignore);
+  const visibleWallets = () => data().wallets.filter(w => !hiddenW(w));
+  const firstW = () => visibleWallets()[0] || data().wallets[0];
+  const counted = t => { const w = walletOf(t.wallet); return !(w && hiddenW(w)); };
   const sum = (list, type) => list.filter(t => t.type === type).reduce((a, t) => a + (+t.amount || 0), 0);
 
   function walletBalance(w) {
@@ -125,10 +128,10 @@ export function initMoney(ctx) {
 
   function txList(list) {
     if (!list.length) return '<div class="empty"><span class="ico">🧾</span>Chưa có giao dịch.<br>Bấm nút + để ghi khoản đầu tiên.</div>';
-    const MAX = 300;
+    const MAX = st.limit;
     const cut = list.length > MAX ? [...list].sort((a, b) => b.date.localeCompare(a.date)).slice(0, MAX) : list;
     const days = [...new Set(cut.map(t => t.date))].sort().reverse();
-    const more = list.length > MAX ? `<div class="note soon">Chỉ hiện ${MAX} giao dịch gần nhất trong ${list.length} khoản. Thầy chọn Tháng hoặc Tuần để xem đầy đủ. Các ô số và biểu đồ vẫn tính đủ.</div>` : '';
+    const more = list.length > MAX ? `<div class="quick" style="justify-content:center"><button class="btn ghost" data-m="more-tx">Xem thêm (còn ${list.length - MAX} khoản)</button></div>` : '';
     return days.map(d => {
       const items = cut.filter(t => t.date === d).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
       const ci = items.filter(counted);
@@ -152,43 +155,51 @@ export function initMoney(ctx) {
     const list = inRange(s, e);
     const cl = list.filter(counted);
     const thu = sum(cl, 'thu'), chi = sum(cl, 'chi');
-    const total = d.wallets.filter(w => !w.ignore).reduce((a, w) => a + walletBalance(w), 0);
+    const total = visibleWallets().reduce((a, w) => a + walletBalance(w), 0);
     const seg = Object.entries(PERIODS).map(([k, v]) => `<button data-m="period" data-p="${k}" class="${st.period === k ? 'on' : ''}">${v}</button>`).join('');
-    const wcard = w => `<div class="card wal" data-m="wallet" data-id="${w.id}"><div class="mi">👛</div><div class="body"><div class="t">${esc(w.name)}</div>${w.ignore ? '<div class="chips"><span class="chip">Không tính vào tổng</span></div>' : ''}</div><div class="amt ${walletBalance(w) < 0 ? 'chi' : ''}">${vnd(walletBalance(w))}</div></div>`;
-    const hidden = d.wallets.filter(w => w.archived);
-    const walls = d.wallets.filter(w => !w.archived).map(wcard).join('')
-      + (hidden.length ? `<details class="tools"><summary>Ví đã ẩn (${hidden.length})</summary>${hidden.map(wcard).join('')}</details>` : '');
-    const cats = ['chi', 'thu'].map(tp => `<div class="catrow"><b>${TYPES[tp]}</b>${d.cats.filter(c => c.type === tp).map(c => `<button class="chip catchip" style="--cc:${esc(c.color)}" data-m="cat" data-id="${c.id}">${esc(c.emoji)} ${esc(c.name)}${+c.budget > 0 ? ' · ' + vnd(c.budget) : ''}</button>`).join('')}</div>`).join('');
+    const wcard = w => `<div class="card wal" data-m="wallet" data-id="${w.id}"><div class="mi">👛</div><div class="body"><div class="t">${esc(w.name)}</div></div><div class="amt ${walletBalance(w) < 0 ? 'chi' : ''}">${vnd(walletBalance(w))}</div></div>`;
+    const hidden = d.wallets.filter(hiddenW);
+    const walls = visibleWallets().map(wcard).join('')
+      + (hidden.length ? `<details class="tools"><summary>Ví đã ẩn (${hidden.length}), không tính vào số dư</summary>${hidden.map(wcard).join('')}</details>` : '');
+    const cats = ['chi', 'thu'].map(tp => `<div class="catrow"><b>${TYPES[tp]}</b>${d.cats.filter(c => c.type === tp).map(c => `<button class="chip catchip" style="--cc:${esc(c.color)}" data-m="cat" data-id="${c.id}">${esc(c.emoji)} ${esc(c.name)}${+c.budget > 0 ? ' · ' + vnd(c.budget) : ''}</button>`).join('')}<button class="chip catchip addchip" data-m="cat-add" data-t="${tp}">+ Thêm</button></div>`).join('');
     const rec = d.recur.map(r => {
       const c = catOf(r.cat);
       return `<div class="card tx" style="--gc:${esc(c ? c.color : '#8a8178')};--cc:${esc(c ? c.color : '#8a8178')}" data-m="recur" data-id="${r.id}"><div class="mi">${esc(c ? c.emoji : '🔁')}</div>
         <div class="body"><div class="t">${esc(r.note || (c ? c.name : 'Khoản lặp lại'))}</div><div class="chips"><span class="chip">Ngày ${r.day} hằng tháng</span>${r.active === false ? '<span class="chip amber">Đang tạm dừng</span>' : ''}</div></div>
         <div class="amt ${r.type}">${r.type === 'thu' ? '+' : '−'}${vnd(r.amount)}</div></div>`;
     }).join('');
-    return `<div class="seg" role="tablist">${seg}</div>
-      <div class="mnav"><button class="btn ghost sm" data-m="prev" aria-label="Kỳ trước">‹</button><b>${esc(rangeLabel(s, e))}</b><button class="btn ghost sm" data-m="next" aria-label="Kỳ sau">›</button></div>
-      <div class="stats m">
+    const subs = { tx: 'Giao dịch', stats: 'Thống kê', wallets: 'Ví', more: 'Thêm' };
+    const subbar = `<div class="seg sub" role="tablist">${Object.entries(subs).map(([k, v]) => `<button data-m="sub" data-s="${k}" class="${st.sub === k ? 'on' : ''}">${v}</button>`).join('')}</div>`;
+    const periodBar = `<div class="seg" role="tablist">${seg}</div>
+      <div class="mnav"><button class="btn ghost sm" data-m="prev" aria-label="Kỳ trước">‹</button><b>${esc(rangeLabel(s, e))}</b><button class="btn ghost sm" data-m="next" aria-label="Kỳ sau">›</button></div>`;
+    const tiles = `<div class="stats m">
         <div class="stat green"><b>${vndShort(thu)}</b><span>Thu nhập</span></div>
         <div class="stat red"><b>${vndShort(chi)}</b><span>Chi phí</span></div>
-        <div class="stat ${thu - chi < 0 ? 'red' : 'amber'}"><b>${thu - chi < 0 ? '−' : ''}${vndShort(thu - chi)}</b><span>Chênh lệch</span></div></div>
-      <div class="note box total">Tổng số dư các ví: <b>${vnd(total)}</b></div>
-      <div class="seg tabs"><button data-m="tab" data-t="chi" class="${st.tab === 'chi' ? 'on' : ''}">Chi phí</button><button data-m="tab" data-t="thu" class="${st.tab === 'thu' ? 'on' : ''}">Thu nhập</button></div>
-      ${donut(cl, st.tab)}
-      ${budgets()}
-      <h2>Giao dịch <span class="count">${list.length}</span></h2>${txList(list)}
-      <h2>Ví và tài khoản</h2>${walls}<div class="quick"><button class="btn ghost sm" data-m="wallet-add">+ Thêm ví</button></div>
-      <h2>Danh mục</h2><div class="note box">${cats}</div><div class="quick"><button class="btn ghost sm" data-m="cat-add">+ Thêm danh mục</button></div>
-      <h2>Khoản lặp lại hằng tháng</h2>${rec || '<div class="note soon">Ví dụ: tiền điện, internet, học phí, lương. App tự ghi vào đúng ngày mỗi tháng.</div>'}
-      <div class="quick"><button class="btn ghost sm" data-m="recur-add">+ Thêm khoản lặp lại</button></div>
-      <h2>Nhập dữ liệu từ app cũ</h2><div class="note">Chọn file dữ liệu đã chuyển từ Money Manager. Khoản nào đã có thì bỏ qua, nên nhập lại không bị trùng.
-        <div class="quick" style="margin-top:8px"><label class="btn ghost">Chọn file để nhập<input type="file" id="m-import" accept=".json,application/json" hidden></label></div></div>
-      <h2>Xuất Excel</h2><div class="note">Tạo file Excel của <b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b> gồm: danh sách giao dịch, tổng hợp theo danh mục, số dư các ví.
-        <div class="quick" style="margin-top:8px"><button class="btn ghost" data-m="export">Tải file Excel tháng này</button></div></div>`;
+        <div class="stat ${thu - chi < 0 ? 'red' : 'amber'}"><b>${thu - chi < 0 ? '−' : ''}${vndShort(thu - chi)}</b><span>Chênh lệch</span></div></div>`;
+    const acc = (title, count, inner) => `<details class="acc"><summary><span>${title}</span>${count == null ? '' : `<em>${count}</em>`}</summary><div class="accb">${inner}</div></details>`;
+    let body;
+    if (st.sub === 'stats') {
+      body = periodBar + tiles
+        + `<div class="seg tabs"><button data-m="tab" data-t="chi" class="${st.tab === 'chi' ? 'on' : ''}">Chi phí</button><button data-m="tab" data-t="thu" class="${st.tab === 'thu' ? 'on' : ''}">Thu nhập</button></div>`
+        + donut(cl, st.tab) + budgets();
+    } else if (st.sub === 'wallets') {
+      body = `<div class="hero totalbox"><span>Số dư hiện tại</span><b>${vnd(total)}</b><em>Chỉ tính các ví đang hiện</em></div>`
+        + walls + `<div class="quick"><button class="btn ghost sm" data-m="wallet-add">+ Thêm ví</button></div>`;
+    } else if (st.sub === 'more') {
+      body = acc('Danh mục', d.cats.length, `${cats}<p class="hint">Bấm vào danh mục để sửa hoặc xoá; bấm "+ Thêm" để thêm vào phần Chi phí hoặc Thu nhập.</p>`)
+        + acc('Khoản lặp lại hằng tháng', d.recur.length, `${rec || '<div class="note soon">Ví dụ: tiền điện, internet, học phí, lương. App tự ghi vào đúng ngày mỗi tháng.</div>'}<div class="quick"><button class="btn ghost sm" data-m="recur-add">+ Thêm khoản lặp lại</button></div>`)
+        + acc('Xuất Excel', null, `<p class="hint" style="margin-top:0">Tạo file Excel của tháng <b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>: danh sách giao dịch, tổng hợp theo danh mục, số dư các ví. Đổi tháng ở thẻ Giao dịch hoặc Thống kê.</p><div class="quick"><button class="btn ghost" data-m="export">Tải file Excel tháng này</button></div>`)
+        + acc('Nhập dữ liệu từ app cũ', null, `<p class="hint" style="margin-top:0">Chọn file dữ liệu đã chuyển từ Money Manager. Khoản nào đã có thì bỏ qua, nên nhập lại không bị trùng.</p><div class="quick"><label class="btn ghost">Chọn file để nhập<input type="file" id="m-import" accept=".json,application/json" hidden></label></div>`);
+    } else {
+      body = periodBar + tiles + `<div class="note box total">Số dư hiện tại: <b>${vnd(total)}</b></div>`
+        + `<h2>Giao dịch <span class="count">${list.length}</span></h2>${txList(list)}`;
+    }
+    return subbar + body;
   }
 
   /* ----- Hộp thêm / sửa giao dịch ----- */
   const catOptions = (type, sel) => data().cats.filter(c => c.type === type).map(c => `<option value="${c.id}"${c.id === sel ? ' selected' : ''}>${esc(c.emoji + ' ' + c.name)}</option>`).join('');
-  const walletOptions = sel => data().wallets.filter(w => !w.archived || w.id === sel).map(w => `<option value="${w.id}"${w.id === sel ? ' selected' : ''}>${esc(w.name)}</option>`).join('');
+  const walletOptions = sel => data().wallets.filter(w => !hiddenW(w) || w.id === sel).map(w => `<option value="${w.id}"${w.id === sel ? ' selected' : ''}>${esc(w.name)}</option>`).join('');
   const bindMoneyInput = el => el.addEventListener('input', () => { const n = num(el.value); el.value = n ? n.toLocaleString('vi-VN') : ''; });
 
   function openTx(t = {}) {
@@ -200,9 +211,9 @@ export function initMoney(ctx) {
       <div class="seg" id="m-type">${Object.entries(TYPES).map(([k, v]) => `<button type="button" data-t="${k}">${v}</button>`).join('')}</div>
       <label>Số tiền (₫)</label><input name="amount" inputmode="numeric" autocomplete="off" placeholder="0" class="big" value="${t.amount ? (+t.amount).toLocaleString('vi-VN') : ''}">
       <div class="row"><div><label>Ngày</label><input type="date" name="date" value="${esc(t.date || today())}" required></div>
-      <div><label id="m-wl">Ví</label><select name="wallet">${walletOptions(t.wallet || d.wallets[0].id)}</select></div></div>
+      <div><label id="m-wl">Ví</label><select name="wallet">${walletOptions(t.wallet || firstW().id)}</select></div></div>
       <div id="m-catbox"><label>Danh mục</label><select name="cat"></select></div>
-      <div id="m-tobox"><label>Chuyển đến ví</label><select name="to">${walletOptions(t.to || (d.wallets[1] || d.wallets[0]).id)}</select></div>
+      <div id="m-tobox"><label>Chuyển đến ví</label><select name="to">${walletOptions(t.to || (visibleWallets()[1] || firstW()).id)}</select></div>
       <label>Ghi chú</label><input name="note" value="${esc(t.note || '')}" placeholder="Ví dụ: ăn trưa với đồng nghiệp">
       <div class="actions">${isNew ? '' : '<button type="button" class="btn danger" id="del">Xoá</button>'}<button type="button" class="btn ghost" id="cancel">Đóng</button><button class="btn" value="save">Lưu</button></div></form>`;
     const f = $('#mtf');
@@ -238,19 +249,24 @@ export function initMoney(ctx) {
     dlg().innerHTML = `<form method="dialog" id="mwf"><label>Tên ví</label><input name="name" required value="${esc(w.name || '')}" placeholder="Ví dụ: Tiền mặt, Vietcombank, Thẻ tín dụng">
       <label>Số dư ban đầu (₫)</label><input name="start" inputmode="numeric" autocomplete="off" value="${w.start ? (+w.start).toLocaleString('vi-VN') : ''}" placeholder="0">
       <p class="hint">Số dư lúc Thầy bắt đầu ghi sổ. Các khoản thu chi ghi sau sẽ cộng trừ vào đây.</p>
-      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" name="ignore"${w.ignore ? ' checked' : ''}> Không tính vào tổng số dư (ví vay mượn, đầu tư…)</label>
-      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" name="archived"${w.archived ? ' checked' : ''}> Ẩn ví này khỏi danh sách chọn</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" name="hide"${hiddenW(w) ? ' checked' : ''}> Ẩn ví này</label>
+      <p class="hint">Ví ẩn không hiện khi chọn ví và không tính vào số dư hiện tại. Hợp với ví vay mượn, đầu tư hoặc ví ít dùng. Bỏ tích để hiện lại.</p>
       <div class="actions">${isNew ? '' : '<button type="button" class="btn danger" id="del">Xoá</button>'}<button type="button" class="btn ghost" id="cancel">Đóng</button><button class="btn" value="save">Lưu</button></div></form>`;
     const f = $('#mwf');
     bindMoneyInput(f.start);
     $('#cancel').onclick = () => dlg().close();
     if (!isNew) $('#del').onclick = async () => {
-      const used = data().txs.filter(t => t.wallet === w.id || t.to === w.id).length;
-      if (used) { alert(`Ví này còn ${used} giao dịch. Thầy chuyển hoặc xoá các giao dịch đó trước khi xoá ví.`); return; }
-      if (confirm('Xoá ví này?')) { await store().remove('wallets', w.id); dlg().close(); }
+      const mine = data().txs.filter(t => t.wallet === w.id || t.to === w.id);
+      const msg = mine.length
+        ? `Ví này có ${mine.length} giao dịch. Xoá ví sẽ xoá luôn các giao dịch đó và không khôi phục được.\n\nNếu chỉ muốn ví không hiện nữa, Thầy bấm Huỷ rồi chọn "Ẩn ví này".\n\nVẫn xoá ví và ${mine.length} giao dịch?`
+        : 'Xoá ví này?';
+      if (!confirm(msg)) return;
+      if (mine.length) await store().removeMany('txs', mine.map(t => t.id));
+      await store().remove('wallets', w.id);
+      dlg().close();
     };
     dlg().showModal();
-    f.onsubmit = async () => { await store().save('wallets', { ...w, name: f.name.value.trim(), start: num(f.start.value), ignore: f.ignore.checked, archived: f.archived.checked }); };
+    f.onsubmit = async () => { await store().save('wallets', { ...w, name: f.name.value.trim(), start: num(f.start.value), archived: f.hide.checked, ignore: f.hide.checked }); };
   }
 
   function openCat(c = {}) {
@@ -266,9 +282,12 @@ export function initMoney(ctx) {
     bindMoneyInput(f.budget);
     $('#cancel').onclick = () => dlg().close();
     if (!isNew) $('#del').onclick = async () => {
-      const used = data().txs.filter(t => t.cat === c.id).length;
-      if (used) { alert(`Danh mục này còn ${used} giao dịch. Thầy đổi sang danh mục khác trước khi xoá.`); return; }
-      if (confirm('Xoá danh mục này?')) { await store().remove('cats', c.id); dlg().close(); }
+      const mine = data().txs.filter(t => t.cat === c.id);
+      const msg = mine.length ? `Danh mục này có ${mine.length} giao dịch. Nếu xoá, các giao dịch đó vẫn còn nhưng chuyển thành "Chưa phân loại".\n\nVẫn xoá danh mục?` : 'Xoá danh mục này?';
+      if (!confirm(msg)) return;
+      if (mine.length) await store().saveMany('txs', mine.map(t => ({ ...t, cat: '' })));
+      await store().remove('cats', c.id);
+      dlg().close();
     };
     dlg().showModal();
     f.onsubmit = async () => {
@@ -366,7 +385,7 @@ export function initMoney(ctx) {
       bycat[k] = bycat[k] || { 'Loại': TYPES[t.type], 'Danh mục': (catOf(t.cat) || {}).name || 'Chưa phân loại', 'Số tiền (₫)': 0, 'Ngân sách (₫)': t.type === 'chi' ? (+(catOf(t.cat) || {}).budget || '') : '' };
       bycat[k]['Số tiền (₫)'] += t.amount;
     });
-    const wallets = d.wallets.map(w => ({ 'Ví': w.name, 'Số dư hiện tại (₫)': walletBalance(w) }));
+    const wallets = visibleWallets().map(w => ({ 'Ví': w.name, 'Số dư hiện tại (₫)': walletBalance(w) }));
     const tag = s.slice(0, 7);
     try {
       const X = await loadXlsx();
@@ -430,15 +449,17 @@ export function initMoney(ctx) {
     const el = e.target.closest('[data-m]');
     if (!el) return;
     const a = el.dataset.m, id = el.dataset.id, d = data();
-    if (a === 'period') { st.period = el.dataset.p; ctx.render(); }
-    else if (a === 'prev') { shift(-1); ctx.render(); }
-    else if (a === 'next') { shift(1); ctx.render(); }
+    if (a === 'sub') { st.sub = el.dataset.s; st.limit = 60; ctx.render(); window.scrollTo(0, 0); }
+    else if (a === 'more-tx') { st.limit += 100; ctx.render(); }
+    else if (a === 'period') { st.period = el.dataset.p; st.limit = 60; ctx.render(); }
+    else if (a === 'prev') { shift(-1); st.limit = 60; ctx.render(); }
+    else if (a === 'next') { shift(1); st.limit = 60; ctx.render(); }
     else if (a === 'tab') { st.tab = el.dataset.t; ctx.render(); }
     else if (a === 'tx') openTx(d.txs.find(t => t.id === id));
     else if (a === 'wallet') openWallet(d.wallets.find(w => w.id === id));
     else if (a === 'wallet-add') openWallet({});
     else if (a === 'cat') openCat(d.cats.find(c => c.id === id));
-    else if (a === 'cat-add') openCat({});
+    else if (a === 'cat-add') openCat({ type: el.dataset.t });
     else if (a === 'recur') openRecur(d.recur.find(r => r.id === id));
     else if (a === 'recur-add') { if (!d.wallets.length || !d.cats.length) alert('Thầy bấm "Tạo ví và danh mục mẫu" trước.'); else openRecur({}); }
     else if (a === 'export') exportMonth();
