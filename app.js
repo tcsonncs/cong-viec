@@ -179,6 +179,7 @@ const sortTasks = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || 
 
 const quickBar = `<div class="quick"><input id="quick" placeholder="Gõ nhanh: Nộp báo cáo khoa giao cho cô Lan thứ sáu" enterkeyhint="done" autocomplete="off"><button class="btn" id="quick-go">Thêm</button></div>
 <div class="quick"><label class="btn ghost">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost" id="paste-img">Dán ảnh</button><button class="btn ghost" id="gem-key">Khoá Gemini</button></div>
+<div class="quick"><label class="btn ghost">Nhập việc từ file (do trợ lý soạn)<input type="file" id="json-file" accept=".json,application/json" hidden></label></div>
 <p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>`;
 
 function renderToday() {
@@ -448,6 +449,19 @@ async function importImages(files) {
   }
 }
 
+/* ---------- Nhập việc từ file JSON (trợ lý soạn sẵn); Thầy xem lại rồi mới lưu ---------- */
+async function importJson(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    const list = (Array.isArray(j) ? j : j.tasks || []).filter(t => t && typeof t.title === 'string');
+    dlg().innerHTML = '';
+    dlg().showModal();
+    reviewExtracted(list);
+  } catch {
+    alert('File này không đọc được. Thầy nhờ trợ lý soạn lại file nhập việc.');
+  }
+}
+
 /* ---------- Sự kiện ---------- */
 function quickAdd() {
   const q = $('#quick');
@@ -481,7 +495,11 @@ document.addEventListener('click', async e => {
 });
 
 document.addEventListener('change', async e => {
-  if (e.target.id === 'vcf-file') {
+  if (e.target.id === 'json-file') {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) await importJson(file);
+  } else if (e.target.id === 'vcf-file') {
     const file = e.target.files[0];
     e.target.value = '';
     if (file) await importVcf(file);
