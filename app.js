@@ -65,6 +65,14 @@ function makeLocalStore() {
       if (i >= 0) data[col][i] = item; else data[col].push(item);
       persist(); onChange(data);
     },
+    async saveMany(col, items) {
+      const idx = new Map(data[col].map((x, i) => [x.id, i]));
+      for (const item of items) {
+        if (!item.id) item.id = uid();
+        if (idx.has(item.id)) data[col][idx.get(item.id)] = item; else { idx.set(item.id, data[col].length); data[col].push(item); }
+      }
+      persist(); onChange(data);
+    },
     async remove(col, id) {
       data[col] = data[col].filter(x => x.id !== id);
       persist(); onChange(data);
@@ -94,6 +102,14 @@ async function makeFirebaseStore(cfg) {
         COLS.forEach(c => { data[c] = []; });
         if (u) {
           for (const col of COLS) {
+            // Giao dịch chi tiêu gom theo tháng (một tài liệu một tháng) để mỗi lần mở app chỉ đọc vài chục tài liệu.
+            if (col === 'txs') {
+              unsubs.push(fsM.onSnapshot(fsM.collection(db, 'users', u.uid, 'txm'), snap => {
+                data.txs = snap.docs.flatMap(d => Object.values(d.data().items || {}));
+                cb(data);
+              }));
+              continue;
+            }
             unsubs.push(fsM.onSnapshot(fsM.collection(db, 'users', u.uid, col), snap => {
               data[col] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
               cb(data);
@@ -121,9 +137,37 @@ async function makeFirebaseStore(cfg) {
     },
     async save(col, item) {
       if (!item.id) item.id = uid();
+      if (col === 'txs') {
+        const old = data.txs.find(x => x.id === item.id);
+        if (old && old.date.slice(0, 7) !== item.date.slice(0, 7)) await this.remove('txs', item.id);
+        await fsM.setDoc(fsM.doc(db, 'users', user.uid, 'txm', item.date.slice(0, 7)), { items: { [item.id]: item } }, { merge: true });
+        return;
+      }
       await fsM.setDoc(fsM.doc(db, 'users', user.uid, col, item.id), item);
     },
-    async remove(col, id) { await fsM.deleteDoc(fsM.doc(db, 'users', user.uid, col, id)); },
+    // Ghi nhiều bản ghi một lượt (nhập dữ liệu cũ).
+    async saveMany(col, items) {
+      items.forEach(x => { if (!x.id) x.id = uid(); });
+      if (col === 'txs') {
+        const by = {};
+        items.forEach(x => { (by[x.date.slice(0, 7)] = by[x.date.slice(0, 7)] || {})[x.id] = x; });
+        for (const [ym, obj] of Object.entries(by)) await fsM.setDoc(fsM.doc(db, 'users', user.uid, 'txm', ym), { items: obj }, { merge: true });
+        return;
+      }
+      for (let i = 0; i < items.length; i += 400) {
+        const b = fsM.writeBatch(db);
+        items.slice(i, i + 400).forEach(x => b.set(fsM.doc(db, 'users', user.uid, col, x.id), x));
+        await b.commit();
+      }
+    },
+    async remove(col, id) {
+      if (col === 'txs') {
+        const old = data.txs.find(x => x.id === id);
+        if (old) await fsM.updateDoc(fsM.doc(db, 'users', user.uid, 'txm', old.date.slice(0, 7)), new fsM.FieldPath('items', id), fsM.deleteField());
+        return;
+      }
+      await fsM.deleteDoc(fsM.doc(db, 'users', user.uid, col, id));
+    },
     exportAll: () => data
   };
 }
