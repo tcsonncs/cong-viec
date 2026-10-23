@@ -26,14 +26,14 @@ const opts = (obj, sel) => Object.entries(obj).map(([k, v]) => `<option value="$
 
 /* ---------- Kho dữ liệu: chế độ máy (localStorage) ---------- */
 function makeLocalStore() {
-  let data = { tasks: [], contacts: [] };
+  let data = { tasks: [], contacts: [], habits: [] };
   let onChange = () => {};
   const persist = () => localStorage.setItem('appcv', JSON.stringify(data));
   return {
     mode: 'local',
     async init(cb, onAuth) {
       onChange = cb;
-      try { data = { tasks: [], contacts: [], ...JSON.parse(localStorage.getItem('appcv') || '{}') }; } catch { /* dữ liệu hỏng thì bắt đầu mới */ }
+      try { data = { tasks: [], contacts: [], habits: [], ...JSON.parse(localStorage.getItem('appcv') || '{}') }; } catch { /* dữ liệu hỏng thì bắt đầu mới */ }
       onAuth(true, null);
       onChange(data);
     },
@@ -60,7 +60,7 @@ async function makeFirebaseStore(cfg) {
   const app = appM.initializeApp(cfg);
   const auth = authM.getAuth(app);
   const db = fsM.getFirestore(app);
-  const data = { tasks: [], contacts: [] };
+  const data = { tasks: [], contacts: [], habits: [] };
   let unsubs = [];
   let user = null;
   return {
@@ -69,9 +69,9 @@ async function makeFirebaseStore(cfg) {
       authM.onAuthStateChanged(auth, u => {
         unsubs.forEach(f => f()); unsubs = [];
         user = u;
-        data.tasks = []; data.contacts = [];
+        data.tasks = []; data.contacts = []; data.habits = [];
         if (u) {
-          for (const col of ['tasks', 'contacts']) {
+          for (const col of ['tasks', 'contacts', 'habits']) {
             unsubs.push(fsM.onSnapshot(fsM.collection(db, 'users', u.uid, col), snap => {
               data[col] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
               cb(data);
@@ -98,7 +98,7 @@ async function makeFirebaseStore(cfg) {
 
 /* ---------- Trạng thái ---------- */
 let store;
-let data = { tasks: [], contacts: [] };
+let data = { tasks: [], contacts: [], habits: [] };
 let view = 'today';
 let filter = { group: '', status: 'open' };
 let signedIn = false;
@@ -189,7 +189,9 @@ function renderToday() {
   const now = open.filter(t => t.due === td).sort(sortTasks);
   const waiting = open.filter(t => t.status === 'waiting' && t.due !== td && !(t.due && t.due < td));
   const sec = (title, list, cls = '') => list.length ? `<h2 class="${cls}">${title} (${list.length})</h2>${list.map(taskCard).join('')}` : '';
-  const html = sec('Quá hạn', over, 'red') + sec('Hôm nay', now) + sec('Đang chờ người khác', waiting);
+  const hab = data.habits.length
+    ? `<h2>Thói quen hôm nay (${data.habits.filter(h => (h.days || []).includes(td)).length}/${data.habits.length})</h2>${data.habits.map(h => habitCard(h)).join('')}` : '';
+  const html = sec('Quá hạn', over, 'red') + sec('Hôm nay', now) + sec('Đang chờ người khác', waiting) + hab;
   return quickBar +
     `<div class="note">Lịch hôm nay từ Google Calendar và điểm tin sáng sẽ có ở các giai đoạn sau.</div>` +
     (html || '<p class="empty">Hôm nay chưa có việc đến hạn. Gõ việc mới ở ô trên.</p>');
@@ -203,6 +205,72 @@ function renderTasks() {
     <select id="f-group"><option value="">Mọi nhóm</option>${opts(GROUPS, filter.group)}</select>
     <select id="f-status"><option value="open"${filter.status === 'open' ? ' selected' : ''}>Chưa xong</option><option value="done"${filter.status === 'done' ? ' selected' : ''}>Đã xong (lưu trữ)</option></select>
   </div>` + (list.map(taskCard).join('') || '<p class="empty">Không có việc nào.</p>');
+}
+
+/* ---------- Việc lặp lại ---------- */
+function stepDate(dt, repeat) {
+  if (repeat === 'weekly') { dt.setDate(dt.getDate() + 7); return; }
+  const day = dt.getDate();
+  dt.setDate(1);
+  dt.setMonth(dt.getMonth() + 1);
+  dt.setDate(Math.min(day, new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate()));
+}
+
+function nextDue(due, repeat) {
+  const [y, m, d] = (due || today()).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  stepDate(dt, repeat);
+  // Việc để quá hạn lâu: nhảy tới kỳ kế tiếp chưa qua, không đẻ ra cả loạt việc cũ.
+  for (let i = 0; i < 60 && toStr(dt) < today(); i++) stepDate(dt, repeat);
+  return toStr(dt);
+}
+
+// Khi một việc lặp lại được đánh dấu xong thì tự tạo kỳ kế tiếp (chỉ một lần cho mỗi việc).
+async function spawnNext(t) {
+  if (!t.repeat || t.repeat === 'none' || t.spawned) return;
+  t.spawned = true;
+  const { id, doneAt, spawned, ...rest } = t;
+  await store.save('tasks', { ...rest, due: nextDue(t.due, t.repeat), status: 'todo', doneAt: null, log: [], created: new Date().toISOString() });
+}
+
+/* ---------- Thói quen và tổng kết tuần ---------- */
+const dayStr = n => { const d = new Date(); d.setDate(d.getDate() - n); return toStr(d); };
+
+function streak(h) {
+  const s = new Set(h.days || []);
+  let n = s.has(dayStr(0)) ? 0 : 1;
+  let c = 0;
+  while (s.has(dayStr(n))) { c++; n++; }
+  return c;
+}
+
+function habitCard(h, full) {
+  const td = today();
+  const s = new Set(h.days || []);
+  const c = streak(h);
+  const dots = [6, 5, 4, 3, 2, 1, 0].map(n => (s.has(dayStr(n)) ? '●' : '○')).join('');
+  return `<div class="card"><input type="checkbox" class="chk" data-hab="${h.id}"${s.has(td) ? ' checked' : ''} aria-label="Đã làm hôm nay">
+    <div class="body"><div class="t">${esc(h.name)}</div><div class="chips">
+      ${c ? `<span class="chip green">Chuỗi ${c} ngày</span>` : '<span class="chip">Chưa có chuỗi</span>'}
+      ${full ? `<span class="chip" title="7 ngày gần nhất, hôm nay ở bên phải" style="letter-spacing:2px">${dots}</span>` : ''}</div></div>
+    ${full ? `<button class="btn ghost" data-hab-del="${h.id}">Xoá</button>` : ''}</div>`;
+}
+
+function renderHabits() {
+  const days = [6, 5, 4, 3, 2, 1, 0].map(dayStr);
+  const open = data.tasks.filter(t => t.status !== 'done');
+  const doneWeek = data.tasks.filter(t => t.doneAt && toStr(new Date(t.doneAt)) >= days[0]);
+  const over = open.filter(t => t.due && t.due < today());
+  const next7 = open.filter(t => t.due && t.due > today() && t.due <= dayStr(-7));
+  const hl = data.habits.map(h => `<li>${esc(h.name)}: ${days.filter(d => (h.days || []).includes(d)).length}/7 ngày, chuỗi hiện tại ${streak(h)} ngày</li>`).join('');
+  return `<div class="quick"><button class="btn" id="add-habit">+ Thêm thói quen</button></div>`
+    + (data.habits.map(h => habitCard(h, true)).join('')
+      || '<p class="empty">Chưa có thói quen nào.</p><div class="quick"><button class="btn ghost" id="sample-habits">Thêm 3 thói quen mẫu: đọc sách, thể dục, tập piano</button></div>')
+    + `<h2>Tổng kết 7 ngày qua</h2><div class="note"><ul style="margin:0;padding-left:18px">
+      <li>Việc đã xong: <b>${doneWeek.length}</b></li>
+      <li>Việc đang quá hạn: <b class="${over.length ? 'red' : ''}">${over.length}</b></li>
+      <li>Việc đến hạn trong 7 ngày tới: <b>${next7.length}</b></li>${hl}</ul>
+      <p style="margin:8px 0 0">${over.length ? 'Gợi ý: xử lý hoặc dời hạn các việc quá hạn trước khi nhận thêm việc mới.' : 'Không có việc quá hạn. Tuần tới có thể dành thêm giờ cho nghiên cứu và soạn học liệu.'}</p></div>`;
 }
 
 function renderContacts() {
@@ -222,7 +290,7 @@ function renderContacts() {
 }
 
 function render() {
-  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', contacts: 'Danh bạ' };
+  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', contacts: 'Danh bạ' };
   $('#title').textContent = titles[view];
   document.querySelectorAll('.bottom button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
   const bu = $('#btn-user');
@@ -234,7 +302,7 @@ function render() {
     return;
   }
   const keep = document.activeElement && document.activeElement.id === 'quick' ? $('#quick').value : null;
-  main.innerHTML = { today: renderToday, tasks: renderTasks, contacts: renderContacts }[view]() +
+  main.innerHTML = { today: renderToday, tasks: renderTasks, habits: renderHabits, contacts: renderContacts }[view]() +
     (store.mode === 'local' ? `<div class="note">Đang ở <b>chế độ máy</b>: dữ liệu chỉ lưu trong trình duyệt này, chưa đồng bộ điện thoại và máy tính.</div>` : '');
   if (keep !== null) { const q = $('#quick'); q.value = keep; q.focus(); }
 }
@@ -283,6 +351,7 @@ function openTask(t) {
     if (p) item.log = [...item.log, { at: new Date().toLocaleString('vi-VN'), text: p }];
     if (item.status === 'done' && !item.doneAt) item.doneAt = new Date().toISOString();
     if (item.status !== 'done') item.doneAt = null;
+    if (item.status === 'done' && t.status !== 'done') await spawnNext(item);
     if (!item.created) item.created = new Date().toISOString();
     await store.save('tasks', item);
   };
@@ -472,7 +541,7 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,[data-hab-del]');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
@@ -480,6 +549,17 @@ document.addEventListener('click', async e => {
   else if (el.id === 'quick-go') quickAdd();
   else if (el.id === 'add-contact') openContact({});
   else if (el.id === 'gem-key') askKey();
+  else if (el.id === 'add-habit') {
+    const name = (prompt('Tên thói quen mới (ví dụ: Đọc sách 30 phút)') || '').trim();
+    if (name) await store.save('habits', { name, days: [], created: new Date().toISOString() });
+  }
+  else if (el.id === 'sample-habits') {
+    for (const name of ['Đọc sách', 'Thể dục', 'Tập piano']) await store.save('habits', { name, days: [], created: new Date().toISOString() });
+  }
+  else if (el.dataset.habDel) {
+    const h = data.habits.find(x => x.id === el.dataset.habDel);
+    if (h && confirm(`Xoá thói quen "${h.name}" cùng lịch sử tích?`)) await store.remove('habits', h.id);
+  }
   else if (el.id === 'paste-img') {
     try {
       const files = [];
@@ -507,10 +587,18 @@ document.addEventListener('change', async e => {
     const files = [...e.target.files].slice(0, 6);
     e.target.value = '';
     if (files.length) await importImages(files);
+  } else if (e.target.dataset.hab) {
+    const h = data.habits.find(x => x.id === e.target.dataset.hab);
+    const td = today();
+    const days = (h.days || []).filter(d => d !== td);
+    if (e.target.checked) days.push(td);
+    await store.save('habits', { ...h, days });
   } else if (e.target.dataset.done) {
     const t = data.tasks.find(x => x.id === e.target.dataset.done);
     const done = e.target.checked;
-    await store.save('tasks', { ...t, status: done ? 'done' : 'todo', doneAt: done ? new Date().toISOString() : null });
+    const item = { ...t, status: done ? 'done' : 'todo', doneAt: done ? new Date().toISOString() : null };
+    if (done) await spawnNext(item);
+    await store.save('tasks', item);
   } else if (e.target.id === 'f-group') { filter.group = e.target.value; render(); }
   else if (e.target.id === 'f-status') { filter.status = e.target.value; render(); }
 });
