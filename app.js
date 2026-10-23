@@ -352,7 +352,7 @@ async function importVcf(file) {
 
 /* ---------- Đọc ảnh (giấy viết tay, tin nhắn Zalo) bằng Gemini, Thầy xem lại rồi mới lưu ---------- */
 const KEY_NAME = 'appcv-gemini';
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
 const getKey = () => { try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; } };
 
 function askKey() {
@@ -388,22 +388,22 @@ Nếu không có việc nào, trả về mảng rỗng.`;
     type: 'ARRAY', items: { type: 'OBJECT', required: ['title'], properties: {
       title: { type: 'STRING' }, due: { type: 'STRING' }, assignee: { type: 'STRING' }, contact: { type: 'STRING' },
       group: { type: 'STRING', enum: Object.keys(GROUPS) }, prio: { type: 'INTEGER' }, notes: { type: 'STRING' } } } } } };
-  let last = '';
-  // Mô hình đang quá tải (503) thì thử mô hình khác, hết một vòng thì chờ vài giây rồi thử lại.
-  for (const model of [...GEMINI_MODELS, ...GEMINI_MODELS]) {
-    if (last.startsWith('Gemini đang quá tải') && model === GEMINI_MODELS[0]) await new Promise(r => setTimeout(r, 4000));
+  let last = '', busy = false;
+  // Mô hình đang quá tải (503) thì thử mô hình khác, hết một vòng thì chờ vài giây rồi thử lại (tối đa 3 vòng).
+  for (const model of [...GEMINI_MODELS, ...GEMINI_MODELS, ...GEMINI_MODELS]) {
+    if (busy && model === GEMINI_MODELS[0]) await new Promise(r => setTimeout(r, 5000));
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body) });
     if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
     if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
     if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
-    if (res.status === 503 || res.status === 500) { last = 'Gemini đang quá tải (mã ' + res.status + '). Thầy thử lại sau vài phút.'; continue; }
+    if (res.status === 503 || res.status === 500) { busy = true; continue; }
     if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
     const j = await res.json();
     const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
     return JSON.parse(txt);
   }
-  throw new Error(last || 'Không gọi được Gemini');
+  throw new Error(busy ? 'Gemini đang quá tải (đã thử nhiều lần). Thầy thử lại sau vài phút.' : (last || 'Không gọi được Gemini'));
 }
 
 function reviewExtracted(list) {
