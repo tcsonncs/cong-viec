@@ -1,5 +1,5 @@
 import * as cfg from './firebase-config.js';
-import { initMoney } from './chitieu.js?v=6';
+import { initMoney } from './chitieu.js?v=7';
 const firebaseConfig = cfg.firebaseConfig;
 const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));

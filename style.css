@@ -291,7 +291,10 @@ input.big{font-size:1.6rem;font-weight:800;text-align:right}
 
 .stats.m{grid-template-columns:repeat(3,minmax(0,1fr))}
 .addchip{border-style:dashed;color:var(--accent);font-weight:700}
-.seg.sub{margin-top:.2rem}
+.seg.sub{margin-top:.2rem;gap:.1rem}.seg.sub button{font-size:.82rem;padding:.5rem .1rem;white-space:nowrap}
+.stats.m .stat{overflow:hidden}.stats.m .stat b{font-size:clamp(.78rem,3.9vw,.95rem)}
+.kindh{margin:1rem 0 .3rem;display:flex;justify-content:space-between;font-weight:700;color:var(--mute);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em}
+.mvsum{display:flex;justify-content:space-between;align-items:center;margin:1rem 0 .3rem}.mvsum h2{margin:0}.mvsum b{font-size:1rem}
 .hero.totalbox{text-align:center;margin-top:.6rem}
 .totalbox span{display:block;color:var(--mute);font-size:.85rem;font-weight:650}
 .totalbox b{display:block;font-size:1.9rem;font-weight:800;margin:.1rem 0}
