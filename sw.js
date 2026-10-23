@@ -1,4 +1,4 @@
-const CACHE = 'appcv-v1';
+const CACHE = 'appcv-v2';
 const SHELL = ['./', './index.html', './style.css', './app.js', './firebase-config.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
@@ -9,6 +9,24 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));
   self.clients.claim();
+});
+
+// Thông báo đẩy từ máy chủ nhắc việc (FCM). iPhone yêu cầu mỗi lần đẩy phải hiện một thông báo.
+self.addEventListener('push', e => {
+  let j = {};
+  try { j = e.data ? e.data.json() : {}; } catch { /* nội dung không phải JSON */ }
+  const d = j.data || j.notification || j;
+  e.waitUntil(self.registration.showNotification(d.title || 'Công việc của Thầy', {
+    body: d.body || '', icon: 'icon.svg', badge: 'icon.svg', tag: 'appcv', renotify: true
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    const c = cs.find(x => x.url.startsWith(self.registration.scope));
+    return c ? c.focus() : self.clients.openWindow(self.registration.scope);
+  }));
 });
 
 // Tệp của app: ưu tiên mạng, mất mạng thì dùng bản đã lưu.

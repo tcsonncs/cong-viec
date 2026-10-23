@@ -8,3 +8,5 @@ export const firebaseConfig = {
   messagingSenderId: "501243625365",
   appId: "1:501243625365:web:e5563a7467659cf543c09c"
 };
+// Khoá công khai cho thông báo đẩy (Firebase > Cài đặt dự án > Cloud Messaging > Web Push certificates). Để rỗng thì chưa bật được thông báo.
+export const vapidKey = "BOTkv9cBShVsRe2CxWPJXGBm-tnHczo5QRKO7mJ3iq6QfWQ3sG-au_P2jn8wtjsxWIo3rMtTiat9noOTSsKoCWI";

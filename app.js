@@ -1,4 +1,6 @@
-import { firebaseConfig } from './firebase-config.js';
+import * as cfg from './firebase-config.js';
+const firebaseConfig = cfg.firebaseConfig;
+const vapidKey = cfg.vapidKey || '';
 
 /* ---------- Hằng số ---------- */
 const GROUPS = {
@@ -87,6 +89,16 @@ async function makeFirebaseStore(cfg) {
       try { await authM.signInWithPopup(auth, p); } catch { await authM.signInWithRedirect(auth, p); }
     },
     logout: () => authM.signOut(auth),
+    // Bật thông báo đẩy cho thiết bị này: lấy mã thiết bị (FCM token) và lưu để máy chủ nhắc việc gửi tới.
+    async enablePush(vapid) {
+      const msgM = await import(base + 'firebase-messaging.js');
+      if (!('Notification' in window) || !(await msgM.isSupported())) throw new Error('Thiết bị này chưa nhận được thông báo. Trên iPhone, Thầy cần mở app từ biểu tượng ở màn hình chính (không mở bằng Safari).');
+      if ((await Notification.requestPermission()) !== 'granted') throw new Error('Thầy chưa cho phép thông báo. Vào Cài đặt của máy, tìm app này và bật Thông báo.');
+      const reg = await navigator.serviceWorker.ready;
+      const token = await msgM.getToken(msgM.getMessaging(app), { vapidKey: vapid, serviceWorkerRegistration: reg });
+      if (!token) throw new Error('Không lấy được mã thiết bị.');
+      await fsM.setDoc(fsM.doc(db, 'users', user.uid, 'devices', token), { token, device: navigator.userAgent.slice(0, 120), updated: new Date().toISOString() });
+    },
     async save(col, item) {
       if (!item.id) item.id = uid();
       await fsM.setDoc(fsM.doc(db, 'users', user.uid, col, item.id), item);
@@ -263,6 +275,10 @@ function renderHabits() {
   const over = open.filter(t => t.due && t.due < today());
   const next7 = open.filter(t => t.due && t.due > today() && t.due <= dayStr(-7));
   const hl = data.habits.map(h => `<li>${esc(h.name)}: ${days.filter(d => (h.days || []).includes(d)).length}/7 ngày, chuỗi hiện tại ${streak(h)} ngày</li>`).join('');
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  const push = store.enablePush
+    ? `<h2>Thông báo nhắc việc</h2><div class="note">${perm === 'granted' ? 'Thiết bị này đã bật thông báo. ' : ''}Nhắc lúc 6 giờ sáng (việc quá hạn, hôm nay, ngày mai) và tổng kết tuần lúc 20 giờ Chủ nhật.
+      <div class="quick" style="margin-top:8px"><button class="btn ghost" id="enable-push">${perm === 'granted' ? 'Cập nhật thông báo trên thiết bị này' : 'Bật thông báo trên thiết bị này'}</button></div></div>` : '';
   return `<div class="quick"><button class="btn" id="add-habit">+ Thêm thói quen</button></div>`
     + (data.habits.map(h => habitCard(h, true)).join('')
       || '<p class="empty">Chưa có thói quen nào.</p><div class="quick"><button class="btn ghost" id="sample-habits">Thêm 3 thói quen mẫu: đọc sách, thể dục, tập piano</button></div>')
@@ -270,7 +286,7 @@ function renderHabits() {
       <li>Việc đã xong: <b>${doneWeek.length}</b></li>
       <li>Việc đang quá hạn: <b class="${over.length ? 'red' : ''}">${over.length}</b></li>
       <li>Việc đến hạn trong 7 ngày tới: <b>${next7.length}</b></li>${hl}</ul>
-      <p style="margin:8px 0 0">${over.length ? 'Gợi ý: xử lý hoặc dời hạn các việc quá hạn trước khi nhận thêm việc mới.' : 'Không có việc quá hạn. Tuần tới có thể dành thêm giờ cho nghiên cứu và soạn học liệu.'}</p></div>`;
+      <p style="margin:8px 0 0">${over.length ? 'Gợi ý: xử lý hoặc dời hạn các việc quá hạn trước khi nhận thêm việc mới.' : 'Không có việc quá hạn. Tuần tới có thể dành thêm giờ cho nghiên cứu và soạn học liệu.'}</p></div>` + push;
 }
 
 function renderContacts() {
@@ -541,7 +557,7 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,[data-hab-del]');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
@@ -549,6 +565,11 @@ document.addEventListener('click', async e => {
   else if (el.id === 'quick-go') quickAdd();
   else if (el.id === 'add-contact') openContact({});
   else if (el.id === 'gem-key') askKey();
+  else if (el.id === 'enable-push') {
+    if (!vapidKey) { alert('Chưa cài khoá thông báo (vapidKey) trong firebase-config.js.'); return; }
+    try { await store.enablePush(vapidKey); alert('Đã bật thông báo cho thiết bị này.'); render(); }
+    catch (err) { console.error(err); alert(err.message || 'Không bật được thông báo.'); }
+  }
   else if (el.id === 'add-habit') {
     const name = (prompt('Tên thói quen mới (ví dụ: Đọc sách 30 phút)') || '').trim();
     if (name) await store.save('habits', { name, days: [], created: new Date().toISOString() });
