@@ -1,4 +1,4 @@
-const CACHE = 'appcv-v3';
+﻿const CACHE = 'appcv-v4';
 const SHELL = ['./', './index.html', './style.css', './app.js', './firebase-config.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
@@ -41,3 +41,4 @@ self.addEventListener('fetch', e => {
     }).catch(() => caches.match(e.request))
   );
 });
+

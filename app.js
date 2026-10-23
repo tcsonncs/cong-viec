@@ -26,6 +26,23 @@ const fmt = s => (s ? s.split('-').reverse().join('/') : '');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const opts = (obj, sel) => Object.entries(obj).map(([k, v]) => `<option value="${k}"${String(k) === String(sel) ? ' selected' : ''}>${esc(v)}</option>`).join('');
 
+/* ---------- Giao diện sáng / tối ---------- */
+const SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const isDark = () => (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark';
+function paintTheme() {
+  const b = $('#theme');
+  if (b) b.innerHTML = isDark() ? SUN : MOON;
+  const m = $('meta[name="theme-color"]');
+  if (m) m.content = isDark() ? '#090d18' : '#fcf8ef';
+}
+function toggleTheme() {
+  const next = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('appcv-theme', next); } catch { /* bỏ qua */ }
+  paintTheme();
+}
+
 /* ---------- Kho dữ liệu: chế độ máy (localStorage) ---------- */
 function makeLocalStore() {
   let data = { tasks: [], contacts: [], habits: [] };
@@ -568,12 +585,13 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#fab,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#theme,#fab,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
   if (!el) return;
   if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
   else if (el.dataset.contact) openContact(data.contacts.find(c => c.id === el.dataset.contact));
   else if (el.id === 'quick-go') quickAdd();
+  else if (el.id === 'theme') toggleTheme();
   else if (el.id === 'fab') {
     if (view === 'contacts') openContact({});
     else openTask({ title: '', due: view === 'today' ? today() : '', group: view === 'tasks' && filter.group ? filter.group : 'quanly', prio: 3, status: 'todo' });
@@ -651,6 +669,7 @@ document.addEventListener('paste', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'quick') { e.preventDefault(); quickAdd(); } });
 
 /* ---------- Khởi động ---------- */
+paintTheme();
 (async function start() {
   try {
     store = firebaseConfig ? await makeFirebaseStore(firebaseConfig) : makeLocalStore();
