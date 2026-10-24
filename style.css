@@ -108,7 +108,8 @@ details.tools[open] summary::before{content:"－ "}
 .chip.green{background:var(--greenbg);color:var(--green)}
 .chip.grp{background:transparent;border:1px solid var(--gc,var(--line));color:var(--gc,var(--mute))}
 .dots{display:inline-flex;gap:3px;align-items:center;padding:.12rem .5rem;background:var(--soft);border-radius:1rem}
-.dots i{width:.55rem;height:.55rem;border-radius:50%;background:var(--line)}
+.dots i{width:.55rem;height:.55rem;border-radius:50%;background:var(--line);cursor:pointer;position:relative}
+.dots i::after{content:"";position:absolute;inset:-.45rem -.2rem}
 .dots i.on{background:var(--green)}
 
 .filters{display:flex;gap:.5rem;margin:1rem 0 .3rem}

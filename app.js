@@ -357,7 +357,7 @@ function habitCard(h, full) {
   const td = today();
   const s = new Set(h.days || []);
   const c = streak(h);
-  const dots = [6, 5, 4, 3, 2, 1, 0].map(n => `<i${s.has(dayStr(n)) ? ' class="on"' : ''}></i>`).join('');
+  const dots = [6, 5, 4, 3, 2, 1, 0].map(n => `<i data-hab-day="${h.id}|${dayStr(n)}" title="${dayStr(n)}: bấm để tích hoặc bỏ tích"${s.has(dayStr(n)) ? ' class="on"' : ''}></i>`).join('');
   return `<div class="card g-thoiquen"><input type="checkbox" class="chk" data-hab="${h.id}"${s.has(td) ? ' checked' : ''} aria-label="Đã làm hôm nay">
     <div class="body"><div class="t">${esc(h.name)}</div><div class="chips">
       ${c ? `<span class="chip green">Chuỗi ${c} ngày</span>` : '<span class="chip">Chưa có chuỗi</span>'}
@@ -673,9 +673,19 @@ function quickAdd() {
 }
 
 document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#theme,#fab,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del]');
+  const el = e.target.closest('[data-view],[data-open],[data-contact],#quick-go,#theme,#fab,#add-contact,#login,#btn-user,#gem-key,#paste-img,#add-habit,#sample-habits,#enable-push,[data-hab-del],[data-hab-day]');
   if (!el) return;
-  if (el.dataset.view) { view = el.dataset.view; render(); }
+  if (el.dataset.habDay) {
+    const [id, day] = el.dataset.habDay.split('|');
+    const h = data.habits.find(x => x.id === id);
+    if (h) {
+      const has = (h.days || []).includes(day);
+      const days = (h.days || []).filter(d => d !== day);
+      if (!has) days.push(day);
+      await store.save('habits', { ...h, days });
+    }
+  }
+  else if (el.dataset.view) { view = el.dataset.view; render(); }
   else if (el.dataset.open) openTask(data.tasks.find(t => t.id === el.dataset.open));
   else if (el.dataset.contact) openContact(data.contacts.find(c => c.id === el.dataset.contact));
   else if (el.id === 'quick-go') quickAdd();
