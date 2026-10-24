@@ -1,6 +1,6 @@
 ﻿// Lịch công tác tuần của trường: khung "Lịch hôm nay", thẻ Lịch (tuần này, tuần sau) và quản lý vai trò lọc.
 // Dữ liệu do nhac/lich.mjs ghi vào users/{uid}/lich; vai trò lưu ở users/{uid}/cfg/lich.
-import { DEFAULT_CFG, KINDS, matchItem, addDays, mondayOf, shortTime, expandEvents, schoolSpan, ownSpan, findClashes } from './lichloc.js?v=14';
+import { DEFAULT_CFG, KINDS, matchItem, addDays, mondayOf, shortTime, expandEvents, schoolSpan, ownSpan, findClashes } from './lichloc.js?v=15';
 
 export function initLich(ctx) {
   const { $, esc, today, fmt, data, store, render, openTask } = ctx;

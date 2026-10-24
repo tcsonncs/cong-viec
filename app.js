@@ -1,6 +1,6 @@
 ﻿import * as cfg from './firebase-config.js';
 import { initMoney } from './chitieu.js?v=10';
-import { initLich } from './lich.js?v=14';
+import { initLich } from './lich.js?v=15';
 const firebaseConfig = cfg.firebaseConfig;
 const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg', 'events'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
@@ -282,7 +282,7 @@ const quickBar = `<div class="hero"><div class="quick"><input id="quick" placeho
 <p class="hint">App tự tách hạn, người được giao, người liên hệ; Thầy xem lại rồi mới lưu. Có thể bấm micro trên bàn phím điện thoại để nói.</p>
 <details class="tools"><summary>Thêm việc từ ảnh hoặc file</summary>
 <div class="quick"><label class="btn ghost sm">Ảnh → việc (giấy viết tay, Zalo)<input type="file" id="img-file" accept="image/*" multiple hidden></label><button class="btn ghost sm" id="paste-img">Dán ảnh</button><button class="btn ghost sm" id="gem-key">Khoá Gemini</button></div>
-<div class="quick"><label class="btn ghost sm">Nhập việc từ file (do trợ lý soạn)<input type="file" id="json-file" accept=".json,application/json" hidden></label></div>
+<div class="quick"><label class="btn ghost sm">Nhập việc hoặc lịch từ file (do trợ lý soạn)<input type="file" id="json-file" accept=".json,application/json" hidden></label></div>
 </details></div>`;
 
 function renderToday() {
@@ -638,6 +638,7 @@ async function importImages(files) {
 async function importJson(file) {
   try {
     const j = JSON.parse(await file.text());
+    if (Array.isArray(j.events)) return importEvents(j.events);
     const list = (Array.isArray(j) ? j : j.tasks || []).filter(t => t && typeof t.title === 'string');
     dlg().innerHTML = '';
     dlg().showModal();
@@ -645,6 +646,19 @@ async function importJson(file) {
   } catch {
     alert('File này không đọc được. Thầy nhờ trợ lý soạn lại file nhập việc.');
   }
+}
+
+// Lịch lặp hằng tuần do trợ lý soạn: { events: [{ title, kind, weekday, start, end, place }] }; bỏ qua buổi đã có.
+async function importEvents(list) {
+  const KINDS = { daihoc: 1, pt: 1, them: 1, rieng: 1 };
+  const have = k => (data.events || []).some(e => e.rep && `${e.title}|${e.weekday}|${e.start}` === k);
+  const ok = list.filter(e => e && typeof e.title === 'string' && e.weekday >= 0 && e.weekday <= 6 && /^\d\d:\d\d$/.test(e.start || ''));
+  const add = ok.filter(e => !have(`${e.title}|${e.weekday}|${e.start}`));
+  const WD = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  if (!add.length) { alert('Không có buổi nào mới để nhập (các buổi này đã có trong lịch).'); return; }
+  if (!confirm(`Nhập ${add.length} buổi lặp hằng tuần?\n\n` + add.map(e => `${WD[e.weekday]} ${e.start}–${e.end || '?'} ${e.title}`).join('\n'))) return;
+  for (const e of add) await store.save('events', { title: e.title, kind: KINDS[e.kind] ? e.kind : 'rieng', rep: true, weekday: +e.weekday, from: e.from || '', to: e.to || '', start: e.start, end: e.end || '', place: e.place || '', note: e.note || '', skip: [], moved: {} });
+  alert(`Đã nhập ${add.length} buổi. Thầy xem ở thẻ Lịch, trang “Lịch dạy, riêng”.`);
 }
 
 /* ---------- Sự kiện ---------- */
