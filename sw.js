@@ -1,4 +1,4 @@
-const CACHE = 'appcv-v12';
+﻿const CACHE = 'appcv-v13';
 const SHELL = ['./', './index.html', './style.css', './app.js', './chitieu.js', './lich.js', './lichloc.js', './bangthang.js','./firebase-config.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

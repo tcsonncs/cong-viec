@@ -318,6 +318,10 @@ details.acc[open]{border-color:var(--frame,var(--accent))}
 .lc .lmore summary{cursor:pointer}
 .lc .lmore div{margin-top:.25rem;overflow-wrap:anywhere}
 .lc .lbtns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+.ldone{display:inline-flex;vertical-align:middle;margin:0 .45rem 0 0;padding:.2rem}
+.ldone input{width:1.35rem;height:1.35rem;margin:0;accent-color:var(--accent);cursor:pointer}
+.card.lc.isdone{opacity:.55}
+.card.lc.isdone .t{text-decoration:line-through}
 .card.lc.own{border-left:4px solid var(--gc)}
 .card.lc.clash{border:2px solid var(--red)}
 .lc .chips{margin-top:.3rem}

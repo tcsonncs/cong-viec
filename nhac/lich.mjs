@@ -130,9 +130,10 @@ export function describeDay(items) {
 
 // Mục của Thầy trong một ngày: lịch trường đã lọc theo vai trò, cộng lịch riêng (events), kèm `clash` nếu trùng giờ.
 // Mỗi phần tử có dạng { time, content, clash? } để dùng với describeDay.
-export function mineOnDate(weekDocs, cfg, date, events = []) {
-  const school = weekDocs.flatMap(w => w.items || []).filter(i => i.date === date && loc.matchItem(i, cfg).mine);
-  const own = loc.expandEvents(events, date, date);
+// done: mục Thầy đã tích "Xong" ({ khoá: ngày }) thì không nhắc nữa.
+export function mineOnDate(weekDocs, cfg, date, events = [], done = {}) {
+  const school = weekDocs.flatMap(w => w.items || []).filter(i => i.date === date && loc.matchItem(i, cfg).mine && !done['t:' + i.id]);
+  const own = loc.expandEvents(events, date, date).filter(o => !done['e:' + o.key]);
   const clash = loc.findClashes([...school.map(loc.schoolSpan), ...own.map(loc.ownSpan)]);
   return [
     ...school.map(i => ({ time: i.time, content: i.content, clash: clash.get('t:' + i.id) })),

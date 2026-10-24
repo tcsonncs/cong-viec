@@ -1,6 +1,6 @@
-// Lịch công tác tuần của trường: khung "Lịch hôm nay", thẻ Lịch (tuần này, tuần sau) và quản lý vai trò lọc.
+﻿// Lịch công tác tuần của trường: khung "Lịch hôm nay", thẻ Lịch (tuần này, tuần sau) và quản lý vai trò lọc.
 // Dữ liệu do nhac/lich.mjs ghi vào users/{uid}/lich; vai trò lưu ở users/{uid}/cfg/lich.
-import { DEFAULT_CFG, KINDS, matchItem, addDays, mondayOf, shortTime, expandEvents, schoolSpan, ownSpan, findClashes } from './lichloc.js?v=12';
+import { DEFAULT_CFG, KINDS, matchItem, addDays, mondayOf, shortTime, expandEvents, schoolSpan, ownSpan, findClashes } from './lichloc.js?v=13';
 
 export function initLich(ctx) {
   const { $, esc, today, fmt, data, store, render, openTask } = ctx;
@@ -23,10 +23,16 @@ export function initLich(ctx) {
   };
 
   // Trùng giờ trong khoảng [from, to]: lịch trường của Thầy cộng lịch riêng.
+  // Mục đã tích "Xong": { khoá: ngày } lưu ở users/{uid}/cfg/lichdone (khoá "t:mãMục" cho lịch trường, "e:mãLịch@ngày" cho lịch riêng).
+  const getDone = () => { const c = data().cfg.find(x => x.id === 'lichdone'); return (c && c.done) || {}; };
+  const tick = (key, date, done) => `<label class="ldone"><input type="checkbox" data-ld="${esc(key)}" data-date="${date}"${done ? ' checked' : ''}></label>`;
+
   function clashes(from, to) {
     const own = expandEvents(events(), from, to);
     const school = matched().filter(i => i.m.mine && i.date >= from && i.date <= to);
-    return { own, map: findClashes([...school.map(schoolSpan), ...own.map(ownSpan)]) };
+    const dn = getDone();
+    // Mục đã xong không còn tính trùng giờ.
+    return { own, map: findClashes([...school.filter(i => !dn['t:' + i.id]).map(schoolSpan), ...own.filter(o => !dn['e:' + o.key]).map(ownSpan)]) };
   }
   const clashChip = names => names && names.length ? `<div class="chips"><span class="chip red">⚠ Trùng giờ với ${esc(names.slice(0, 2).join('; '))}</span></div>` : '';
 
@@ -40,8 +46,9 @@ export function initLich(ctx) {
       o.moved && `<button class="btn ghost sm" data-l="eunmove" data-id="${esc(o.evId)}" data-d="${o.orig}">Trả về ngày cũ</button>`,
       !o.rep && `<button class="btn ghost sm" data-l="edel" data-id="${esc(o.evId)}">Xoá</button>`
     ].filter(Boolean).join('');
-    return `<div class="card lc own${cl ? ' clash' : ''}" style="--gc:${KC[o.kind] || KC.rieng}"><div class="body">
-      <div class="t"><b>${esc(hrs)}</b> ${esc(o.title)}</div>
+    const dn = !!getDone()['e:' + o.key];
+    return `<div class="card lc own${cl ? ' clash' : ''}${dn ? ' isdone' : ''}" style="--gc:${KC[o.kind] || KC.rieng}"><div class="body">
+      <div class="t">${tick('e:' + o.key, o.date, dn)}<b>${esc(hrs)}</b> ${esc(o.title)}</div>
       <div class="chips"><span class="chip grp">${esc(KINDS[o.kind] || 'Riêng')}</span>${o.rep ? '<span class="chip">Hằng tuần</span>' : ''}${dmo ? `<span class="chip amber">Đã đổi từ ${dmo}</span>` : ''}${o.place ? `<span class="chip">📍 ${esc(o.place)}</span>` : ''}</div>
       ${clashChip(cl)}${o.note ? `<div class="lm" style="color:var(--mute)">${esc(o.note)}</div>` : ''}
       <div class="lbtns">${btns}</div></div></div>`;
@@ -63,8 +70,9 @@ export function initLich(ctx) {
       : (ov ? i.m.reason : '');
     const btn = ov ? ['clear', 'Bỏ ngoại lệ'] : i.m.mine ? ['no', 'Không phải của tôi'] : ['yes', 'Đây là của tôi'];
     const more = [i.chutri && `Chủ trì: ${i.chutri}`, i.thanhphan && `Thành phần:\n${i.thanhphan}`].filter(Boolean).join('\n');
-    return `<div class="card lc${cl ? ' clash' : ''}" style="--gc:${i.m.mine ? 'var(--accent)' : 'var(--line)'}"><div class="body">
-      <div class="t"><b>${esc(shortTime(i.time))}</b> ${esc(i.content)}</div>
+    const dn = !!getDone()['t:' + i.id];
+    return `<div class="card lc${cl ? ' clash' : ''}${dn ? ' isdone' : ''}" style="--gc:${i.m.mine ? 'var(--accent)' : 'var(--line)'}"><div class="body">
+      <div class="t">${tick('t:' + i.id, i.date, dn)}<b>${esc(shortTime(i.time))}</b> ${esc(i.content)}</div>
       ${i.diadiem ? `<div class="chips"><span class="chip">📍 ${esc(i.diadiem)}</span></div>` : ''}${clashChip(cl)}
       ${why ? `<div class="lm">${esc(why)}</div>` : ''}
       ${more ? `<details class="lmore"><summary>Chủ trì, thành phần</summary><div>${esc(more).replace(/\n/g, '<br>')}</div></details>` : ''}
@@ -221,6 +229,17 @@ export function initLich(ctx) {
       await store().save('events', { ...ev, moved: { ...(ev.moved || {}), [orig]: { date: f.date.value, start: f.start.value, end: f.end.value } } });
     };
   }
+
+  document.addEventListener('change', async e => {
+    const key = e.target.dataset && e.target.dataset.ld;
+    if (!key) return;
+    const done = { ...getDone() };
+    if (e.target.checked) done[key] = e.target.dataset.date; else delete done[key];
+    // Bỏ các mục xong đã quá 60 ngày để danh sách không phình to.
+    const old = addDays(today(), -60);
+    for (const k of Object.keys(done)) if (done[k] < old) delete done[k];
+    await store().save('cfg', { id: 'lichdone', done });
+  });
 
   document.addEventListener('click', async e => {
     const el = e.target.closest('[data-l]');

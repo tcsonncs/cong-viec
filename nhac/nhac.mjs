@@ -48,8 +48,8 @@ export function buildWeek(tasks, habits, today = vnDate(0), lichMon = []) {
 }
 
 // weeks: các tài liệu lịch tuần của trường; cfg: vai trò của Thầy.
-function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG, events = []) {
-  const mine = d => mineOnDate(weeks, cfg, d, events);
+function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG, events = [], done = {}) {
+  const mine = d => mineOnDate(weeks, cfg, d, events, done);
   if (MODE === 'week') return buildWeek(tasks, habits, vnDate(0), mine(vnDate(1)));
   if (MODE === 'evening') return buildEvening(mine(vnDate(1)));
   return buildMorning(tasks, vnDate(0), vnDate(1), mine(vnDate(0)));
@@ -101,7 +101,8 @@ async function main() {
     const weeks = (await db.collection(`users/${uid}/lich`).get()).docs.map(x => x.data());
     const events = (await db.collection(`users/${uid}/events`).get()).docs.map(x => ({ ...x.data(), id: x.id }));
     const cfgSnap = await db.doc(`users/${uid}/cfg/lich`).get();
-    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG, events);
+    const doneSnap = await db.doc(`users/${uid}/cfg/lichdone`).get();
+    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG, events, doneSnap.exists ? doneSnap.data().done || {} : {});
     if (!msg) { console.log(`Không có gì để nhắc (${MODE}).`); continue; }
     const res = await messaging.sendEach(docs.map(d => ({
       token: d.data().token,
