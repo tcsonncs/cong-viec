@@ -5,7 +5,7 @@ import { DEFAULT_CFG, KINDS, matchItem, addDays, mondayOf, shortTime, expandEven
 export function initLich(ctx) {
   const { $, esc, today, fmt, data, store, render, openTask } = ctx;
   const dlg = () => $('#dlg');
-  const st = { week: 0, scope: 'mine' };
+  const st = { week: 0, scope: 'mine', page: 'day' };
   const KC = { daihoc: '#3b82c4', pt: '#2f9e6a', them: '#d08a1f', rieng: '#9b6bc4' };
   const events = () => data().events || [];
   const optList = (obj, sel) => Object.entries(obj).map(([k, v]) => `<option value="${k}"${String(k) === String(sel) ? ' selected' : ''}>${esc(v)}</option>`).join('');
@@ -112,29 +112,40 @@ export function initLich(ctx) {
       const inner = list.map(x => `<h4 class="lday${x.d === td ? ' red' : ''}">${dow(x.d)}, ${dm(x.d)}${x.d === td ? ' · hôm nay' : ''}</h4>${x[k].map(r => r.h).join('')}`).join('');
       return { n, inner };
     };
-    // Tờ lịch tuần: cột là thứ, hàng là buổi trong ngày; chỉ hiện lịch dạy và lịch riêng.
-    const dn = getDone();
-    const per = o => !o.start ? 0 : o.start < '12:00' ? 1 : o.start < '18:00' ? 2 : 3;
+    // Tờ lịch tuần: cột là thứ, hàng là buổi trong ngày. e = { date, time, cls, gc, html }.
     const PN = ['Cả ngày', 'Sáng', 'Chiều', 'Tối'];
-    const sheet = () => {
-      if (!own.length) return '';
-      const rows = PN.map((p, pi) => ({ p, pi })).filter(r => own.some(o => per(o) === r.pi));
-      const cell = (d, pi) => own.filter(o => o.date === d && per(o) === pi).sort((a, b) => (a.start || '').localeCompare(b.start || ''))
-        .map(o => `<div class="tc${map.get('e:' + o.key) ? ' clash' : ''}${dn['e:' + o.key] ? ' isdone' : ''}" style="--gc:${KC[o.kind] || KC.rieng}"><b>${o.start ? esc(shortTime(o.start)) : ''}</b> ${esc(o.title)}${o.place ? `<i>${esc(o.place)}</i>` : ''}</div>`).join('');
+    const per = t => { const h = parseInt(t, 10); return isNaN(h) ? 0 : h < 12 ? 1 : h < 18 ? 2 : 3; };
+    const sheet = es => {
+      if (!es.length) return '';
+      const rows = PN.map((p, pi) => ({ p, pi })).filter(r => es.some(e => per(e.time) === r.pi));
+      const cell = (d, pi) => es.filter(e => e.date === d && per(e.time) === pi).sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+        .map(e => `<div class="tc${e.cls}" style="--gc:${e.gc}">${e.html}</div>`).join('');
       return `<div class="lsheet"><table><thead><tr><th></th>${days.map(d => `<th class="${d === td ? 'today' : ''}">${['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][new Date(d + 'T00:00:00').getDay()]}<small>${dm(d)}</small></th>`).join('')}</tr></thead>` +
         `<tbody>${rows.map(r => `<tr><th class="pn">${r.p}</th>${days.map(d => `<td class="${d === td ? 'today' : ''}">${cell(d, r.pi)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     };
+    const dn = getDone();
+    const own2 = own.map(o => ({ date: o.date, time: o.start || '', gc: KC[o.kind] || KC.rieng,
+      cls: (map.get('e:' + o.key) ? ' clash' : '') + (dn['e:' + o.key] ? ' isdone' : ''),
+      html: `<b>${o.start ? esc(shortTime(o.start)) : ''}</b> ${esc(o.title)}${o.place ? `<i>${esc(o.place)}</i>` : ''}` }));
+    const sch2 = matched().filter(i => i.date >= days[0] && i.date <= days[6] && (st.scope === 'all' || i.m.mine)).map(i => ({ date: i.date, time: i.time || '',
+      gc: i.m.mine ? 'var(--accent)' : 'var(--line)',
+      cls: (map.get('t:' + i.id) ? ' clash' : '') + (dn['t:' + i.id] ? ' isdone' : ''),
+      html: `<b>${esc(shortTime(i.time))}</b> ${esc(i.content)}${i.diadiem ? `<i>${esc(i.diadiem)}</i>` : ''}` }));
     const so = section('o'), ss = section('s');
-    so.inner = sheet() + (so.inner ? `<h4 class="lday">Chi tiết từng buổi</h4>` + so.inner : '');
+    so.inner = sheet(own2) + (so.inner ? `<h4 class="lday">Chi tiết từng buổi</h4>` + so.inner : '');
+    ss.inner = sheet(sch2) + (ss.inner ? `<h4 class="lday">Chi tiết từng mục</h4>` + ss.inner : '');
     const none = t => `<div class="note soon">${t}</div>`;
-    const body = box(BOX_O[0], BOX_O[1], so.n, so.inner || none('Tuần này chưa có buổi dạy hay lịch riêng. Bấm “+ Thêm lịch”.')) +
-      box(BOX_S[0], BOX_S[1], ss.n, ss.inner || none(st.scope === 'mine' ? 'Tuần này chưa có lịch trường nào của Thầy. Bấm “Toàn trường” để xem hết.' : 'Chưa có lịch trường cho tuần này.'));
-    return seg('week', [[0, `Tuần này (${dm(mon)}–${dm(addDays(mon, 6))})`], [1, 'Tuần sau']]) +
-      seg('scope', [['mine', 'Của tôi'], ['all', 'Toàn trường']]) +
-      `<div class="quick"><button class="btn sm" data-l="eadd">+ Thêm lịch</button> <button class="btn ghost sm" data-l="roles">Vai trò của tôi</button></div>` +
+    const isDay = st.page !== 'truong';
+    const body = isDay
+      ? box(BOX_O[0], BOX_O[1], so.n, so.inner || none('Tuần này chưa có buổi dạy hay lịch riêng. Bấm “+ Thêm lịch”.'))
+      : box(BOX_S[0], BOX_S[1], ss.n, ss.inner || none(st.scope === 'mine' ? 'Tuần này chưa có lịch trường nào của Thầy. Bấm “Toàn trường” để xem hết.' : 'Chưa có lịch trường cho tuần này.'));
+    return seg('page', [['day', '📚 Lịch dạy, riêng'], ['truong', '🏫 Lịch trường']]) +
+      seg('week', [[0, `Tuần này (${dm(mon)}–${dm(addDays(mon, 6))})`], [1, 'Tuần sau']]) +
+      (isDay ? `<div class="quick"><button class="btn sm" data-l="eadd">+ Thêm lịch</button></div>`
+        : seg('scope', [['mine', 'Của tôi'], ['all', 'Toàn trường']]) + `<div class="quick"><button class="btn ghost sm" data-l="roles">Vai trò của tôi</button></div>`) +
       (map.size ? `<div class="note clashn">⚠ Tuần này có lịch trùng giờ (viền đỏ). Mục của trường chỉ có giờ bắt đầu được tạm tính dài 2 tiếng.</div>` : '') +
       body +
-      `<p class="hint">Nguồn: naue.edu.vn/LichTuan.aspx${updated() ? ', cập nhật lúc ' + esc(updated()) : ''}.</p>`;
+      (isDay ? '' : `<p class="hint">Nguồn: naue.edu.vn/LichTuan.aspx${updated() ? ', cập nhật lúc ' + esc(updated()) : ''}.</p>`);
   }
 
   /* ---------- Vai trò ---------- */
@@ -290,6 +301,7 @@ export function initLich(ctx) {
       if (ev && confirm(ev.rep ? `Xoá cả lịch lặp “${ev.title}” (mọi buổi)?` : `Xoá “${ev.title}”?`)) { await store().remove('events', ev.id); dlg().close(); }
     }
     else if (k === 'week') { st.week = +el.dataset.v; render(); }
+    else if (k === 'page') { st.page = el.dataset.v; render(); }
     else if (k === 'scope') { st.scope = el.dataset.v; render(); }
     else if (k === 'roles') openRoles();
     else if (k === 'radd') { readForm(); draft.roles.push({ id: 'r' + Date.now().toString(36), name: 'Vai trò mới', on: true, kw: [] }); paintRoles(); }
@@ -313,3 +325,4 @@ export function initLich(ctx) {
 
   return { view, todayBlock, openEvent };
 }
+
