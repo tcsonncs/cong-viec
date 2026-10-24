@@ -348,3 +348,5 @@ details.acc[open]{border-color:var(--frame,var(--accent))}
 .lrole .lrow input[name^=name]{flex:1;min-width:0}
 .lchk{display:flex;align-items:center;gap:.3rem;margin:0;white-space:nowrap}
 .lchk input{width:auto}
+.lsheet .tt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lsheet .tc{cursor:default}

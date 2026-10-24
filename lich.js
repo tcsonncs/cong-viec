@@ -126,11 +126,11 @@ export function initLich(ctx) {
     const dn = getDone();
     const own2 = own.map(o => ({ date: o.date, time: o.start || '', gc: KC[o.kind] || KC.rieng,
       cls: (map.get('e:' + o.key) ? ' clash' : '') + (dn['e:' + o.key] ? ' isdone' : ''),
-      html: `<b>${o.start ? esc(shortTime(o.start)) : ''}</b> ${esc(o.title)}${o.place ? `<i>${esc(o.place)}</i>` : ''}` }));
+      html: `<b>${o.start ? esc(shortTime(o.start)) : ''}</b> <span class="tt">${esc(o.title)}</span>` }));
     const sch2 = matched().filter(i => i.date >= days[0] && i.date <= days[6] && (st.scope === 'all' || i.m.mine)).map(i => ({ date: i.date, time: i.time || '',
       gc: i.m.mine ? 'var(--accent)' : 'var(--line)',
       cls: (map.get('t:' + i.id) ? ' clash' : '') + (dn['t:' + i.id] ? ' isdone' : ''),
-      html: `<b>${esc(shortTime(i.time))}</b> ${esc(i.content)}${i.diadiem ? `<i>${esc(i.diadiem)}</i>` : ''}` }));
+      html: `<b>${esc(shortTime(i.time))}</b> <span class="tt">${esc(i.content)}</span>` }));
     const so = section('o'), ss = section('s');
     so.inner = sheet(own2) + (so.inner ? `<h4 class="lday">Chi tiết từng buổi</h4>` + so.inner : '');
     ss.inner = sheet(sch2) + (ss.inner ? `<h4 class="lday">Chi tiết từng mục</h4>` + ss.inner : '');
