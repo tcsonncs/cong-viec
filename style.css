@@ -350,3 +350,12 @@ details.acc[open]{border-color:var(--frame,var(--accent))}
 .lchk input{width:auto}
 .lsheet .tt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .lsheet .tc{cursor:default}
+.lbox.tin{border-color:var(--amber,var(--accent))}
+.news{padding:.55rem 0;border-top:1px solid var(--line)}
+.news:first-of-type{border-top:0}
+.news .nt{display:block;font-weight:700;color:var(--ink);text-decoration:none;line-height:1.3;text-align:justify}
+.news .ns{margin:.3rem 0 .1rem;color:var(--ink);font-size:.9rem;line-height:1.4;text-align:justify}
+.news .chips{margin-top:.3rem}
+.lbox.tin .lbtns,#tinv .actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem}
+#tinv select{width:100%}
+#tinv .chip.grp{display:none}

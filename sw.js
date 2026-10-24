@@ -1,5 +1,5 @@
-﻿const CACHE = 'appcv-v15';
-const SHELL = ['./', './index.html', './style.css', './app.js', './chitieu.js', './lich.js', './lichloc.js', './bangthang.js','./firebase-config.js', './icon.svg', './manifest.webmanifest'];
+﻿const CACHE = 'appcv-v16';
+const SHELL = ['./', './index.html', './style.css', './app.js', './chitieu.js', './lich.js', './lichloc.js', './tin.js', './tinloc.js', './bangthang.js','./firebase-config.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
@@ -17,15 +17,18 @@ self.addEventListener('push', e => {
   try { j = e.data ? e.data.json() : {}; } catch { /* nội dung không phải JSON */ }
   const d = j.data || j.notification || j;
   e.waitUntil(self.registration.showNotification(d.title || 'Công việc của Thầy', {
-    body: d.body || '', icon: 'icon.svg', badge: 'icon.svg', tag: 'appcv', renotify: true
+    body: d.body || '', icon: 'icon.svg', badge: 'icon.svg', tag: 'appcv', renotify: true, data: { url: d.url || '' }
   }));
 });
 
+// Bấm thông báo: mở app; thông báo Điểm tin sáng (url "#tin") thì mở luôn hộp xem tin.
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
     const c = cs.find(x => x.url.startsWith(self.registration.scope));
-    return c ? c.focus() : self.clients.openWindow(self.registration.scope);
+    if (c) { if (url) c.postMessage({ url }); return c.focus(); }
+    return self.clients.openWindow(self.registration.scope + url);
   }));
 });
 

@@ -1,8 +1,9 @@
 ﻿import * as cfg from './firebase-config.js';
 import { initMoney } from './chitieu.js?v=10';
 import { initLich } from './lich.js?v=15';
+import { initTin } from './tin.js?v=16';
 const firebaseConfig = cfg.firebaseConfig;
-const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg', 'events'];
+const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg', 'events', 'tin'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
 const vapidKey = cfg.vapidKey || '';
 
@@ -302,7 +303,7 @@ function renderToday() {
     <div class="stat green"><b>${habDone}/${data.habits.length}</b><span>Thói quen</span></div></div>`;
   return stats + quickBar + lich.todayBlock() +
     (html || '<div class="empty"><span class="ico">🎉</span>Hôm nay chưa có việc đến hạn.<br>Gõ việc mới ở ô phía trên.</div>') +
-    `<div class="note soon">Điểm tin sáng sẽ hiện ở đây ở giai đoạn sau.</div>`;
+    tin.todayBlock();
 }
 
 function renderTasks() {
@@ -759,6 +760,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 /* ---------- Khởi động ---------- */
 const money = initMoney({ $, esc, pad, toStr, today, fmt, uid, data: () => data, store: () => store, render: () => render() });
 const lich = initLich({ $, esc, today, fmt, data: () => data, store: () => store, render: () => render(), openTask: t => openTask(t) });
+const tin = initTin({ $, esc, today, fmt, data: () => data, store: () => store });
 paintTheme();
 (async function start() {
   try {
@@ -767,6 +769,6 @@ paintTheme();
     console.error(err);
     store = makeLocalStore();
   }
-  await store.init(d => { data = d; render(); if (signedIn) money.tick(); },(ok, u) => { signedIn = ok; userInfo = u; render(); });
+  await store.init(d => { data = d; render(); if (signedIn) { money.tick(); tin.checkHash(); } },(ok, u) => { signedIn = ok; userInfo = u; render(); });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
