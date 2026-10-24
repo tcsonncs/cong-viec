@@ -50,9 +50,13 @@ async function load(key, url, sample) {
   try {
     if (DRY) xml = sample ? readFileSync(fileURLToPath(new URL('../_mau_tin/' + sample, import.meta.url)), 'utf8') : '';
     else {
-      const r = await fetch(url, { headers: UA });
-      if (!r.ok) throw new Error('mã ' + r.status);
-      xml = await r.text();
+      // Google News hay trả 503 cho máy chủ GitHub: thử lại vài lần, cách nhau vài giây.
+      for (let n = 1; ; n++) {
+        const r = await fetch(url, { headers: UA });
+        if (r.ok) { xml = await r.text(); break; }
+        if (n >= 3 || ![429, 500, 502, 503].includes(r.status)) throw new Error('mã ' + r.status);
+        await new Promise(res => setTimeout(res, 4000 * n));
+      }
     }
   } catch (e) { console.log('Không tải được', url, '–', e.message); }
   const items = xml ? parseFeed(xml) : [];
@@ -80,6 +84,12 @@ async function collect(topic) {
     let list = await load(f, feed.url, SAMPLE[f]);
     if (feed.filter) list = list.filter(i => tl.hasKw(i.title + ' ' + i.snippet, topic.kw));
     add(list, feed.name);
+  }
+  // Google News không trả được tin (hay bị chặn từ máy chủ GitHub) thì tìm từ khoá trong hai báo giáo dục đã duyệt.
+  if (!found.length && topic.kw?.length && !(topic.feeds || []).some(f => tl.FEEDS[f])) {
+    for (const f of ['vne_gd', 'gdtd']) {
+      add((await load(f, tl.FEEDS[f].url, SAMPLE[f])).filter(i => tl.hasKw(i.title + ' ' + i.snippet, [...topic.kw, ...(topic.en || [])])), tl.FEEDS[f].name);
+    }
   }
   const lang = topic.en?.length && !topic.kw?.length ? 'en' : 'vi';
   return found.filter(i => i.time && NOW - i.time <= 864e5 && i.time - NOW < 36e5)
