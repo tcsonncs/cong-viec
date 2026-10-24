@@ -1,0 +1,20 @@
+name: Diem tin
+
+on:
+  schedule:
+    - cron: '30 23 * * *'   # 06:30 giờ Việt Nam
+  workflow_dispatch:
+
+jobs:
+  tin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save firebase-admin@12
+      - run: node nhac/tin.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
