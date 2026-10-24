@@ -1,0 +1,24 @@
+name: Lich tuan
+
+on:
+  schedule:
+    - cron: '0 23 * * *'
+    - cron: '0 2 * * *'
+    - cron: '0 5 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 11 * * *'
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+jobs:
+  lich:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save firebase-admin@12
+      - run: node nhac/lich.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
