@@ -310,3 +310,16 @@ details.acc summary span{flex:1}
 details.acc summary em{font-style:normal;font-size:.78rem;background:var(--soft);color:var(--mute);border-radius:1rem;padding:.05rem .55rem}
 details.acc .accb{padding:0 1rem 1rem;border-top:1px dashed var(--line);padding-top:.7rem}
 details.acc[open]{border-color:var(--frame,var(--accent))}
+
+/* ---------- Lịch công tác ---------- */
+.card.lc .body{cursor:default}
+.lc .lm{font-size:.8rem;color:var(--accent);margin-top:.25rem;font-weight:600}
+.lc .lmore{margin-top:.3rem;font-size:.84rem;color:var(--mute)}
+.lc .lmore summary{cursor:pointer}
+.lc .lmore div{margin-top:.25rem;overflow-wrap:anywhere}
+.lc .lbtns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+.lrole{border:1px solid var(--line);border-radius:.9rem;padding:.6rem .7rem;margin:.6rem 0;display:grid;gap:.45rem}
+.lrole .lrow{display:flex;gap:.5rem;align-items:center}
+.lrole .lrow input[name^=name]{flex:1;min-width:0}
+.lchk{display:flex;align-items:center;gap:.3rem;margin:0;white-space:nowrap}
+.lchk input{width:auto}

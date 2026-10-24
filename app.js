@@ -1,7 +1,8 @@
 import * as cfg from './firebase-config.js';
 import { initMoney } from './chitieu.js?v=10';
+import { initLich } from './lich.js?v=11';
 const firebaseConfig = cfg.firebaseConfig;
-const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl'];
+const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
 const vapidKey = cfg.vapidKey || '';
 
@@ -37,7 +38,7 @@ function paintTheme() {
   const b = $('#theme');
   if (b) b.innerHTML = isDark() ? SUN : MOON;
   const m = $('meta[name="theme-color"]');
-  if (m) m.content = isDark() ? '#090d18' : '#fcf8ef';
+  if (m) m.content = isDark() ? '#150f0a' : '#fcf8ef';
 }
 function toggleTheme() {
   const next = isDark() ? 'light' : 'dark';
@@ -290,9 +291,9 @@ function renderToday() {
     <div class="stat${over.length ? ' red' : ''}"><b>${over.length}</b><span>Quá hạn</span></div>
     <div class="stat amber"><b>${now.length}</b><span>Hôm nay</span></div>
     <div class="stat green"><b>${habDone}/${data.habits.length}</b><span>Thói quen</span></div></div>`;
-  return stats + quickBar +
+  return stats + quickBar + lich.todayBlock() +
     (html || '<div class="empty"><span class="ico">🎉</span>Hôm nay chưa có việc đến hạn.<br>Gõ việc mới ở ô phía trên.</div>') +
-    `<div class="note soon">Lịch Google Calendar và điểm tin sáng sẽ hiện ở đây ở các giai đoạn sau.</div>`;
+    `<div class="note soon">Điểm tin sáng sẽ hiện ở đây ở giai đoạn sau.</div>`;
 }
 
 function renderTasks() {
@@ -393,7 +394,7 @@ function renderContacts() {
 }
 
 function render() {
-  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', money: 'Chi tiêu', contacts: 'Danh bạ' };
+  const titles = { today: 'Hôm nay', tasks: 'Tất cả việc', habits: 'Thói quen và tuần', cal: 'Lịch công tác', money: 'Chi tiêu', contacts: 'Danh bạ' };
   $('#title').textContent = titles[view];
   const nd = new Date();
   $('#sub').textContent = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][nd.getDay()] + ', ' + fmt(toStr(nd));
@@ -408,7 +409,7 @@ function render() {
     return;
   }
   const keep = document.activeElement && document.activeElement.id === 'quick' ? $('#quick').value : null;
-  main.innerHTML = { today: renderToday, tasks: renderTasks, habits: renderHabits, money: () => money.render(), contacts: renderContacts }[view]() +
+  main.innerHTML = { today: renderToday, tasks: renderTasks, habits: renderHabits, cal: () => lich.view(), money: () => money.render(), contacts: renderContacts }[view]() +
     (store.mode === 'local' ? `<div class="note">Đang ở <b>chế độ máy</b>: dữ liệu chỉ lưu trong trình duyệt này, chưa đồng bộ điện thoại và máy tính.</div>` : '');
   if (keep !== null) { const q = $('#quick'); q.value = keep; q.focus(); }
 }
@@ -733,6 +734,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 
 /* ---------- Khởi động ---------- */
 const money = initMoney({ $, esc, pad, toStr, today, fmt, uid, data: () => data, store: () => store, render: () => render() });
+const lich = initLich({ $, esc, today, fmt, data: () => data, store: () => store, render: () => render(), openTask: t => openTask(t) });
 paintTheme();
 (async function start() {
   try {
