@@ -12,7 +12,7 @@ const DEFAULT_CATS = [
   ['Lương', '💰', 'thu', '#4f7a55'], ['Thù lao, giờ giảng', '🧾', 'thu', '#3f8f6f'], ['Dạy thêm', '✏️', 'thu', '#6a9a3f'], ['Thu khác', '➕', 'thu', '#8a8178']
 ];
 
-import { initSheet } from './bangthang.js?v=8';
+import { initSheet } from './bangthang.js?v=10';
 
 export function initMoney(ctx) {
   const { $, esc, pad, toStr, today, fmt, uid } = ctx;
@@ -219,7 +219,7 @@ export function initMoney(ctx) {
       body = acc('Danh mục', d.cats.length, `${cats}<p class="hint">Bấm vào danh mục để sửa hoặc xoá; bấm "+ Thêm" để thêm vào phần Chi phí hoặc Thu nhập.</p>`)
         + acc('Khoản lặp lại hằng tháng', d.recur.length, `${rec || '<div class="note soon">Ví dụ: tiền điện, internet, học phí, lương. App tự ghi vào đúng ngày mỗi tháng.</div>'}<div class="quick"><button class="btn ghost sm" data-m="recur-add">+ Thêm khoản lặp lại</button></div>`)
         + acc('Xuất Excel', null, `<p class="hint" style="margin-top:0">Tạo file Excel của tháng <b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>: danh sách giao dịch, tổng hợp theo danh mục, số dư các ví. Đổi tháng ở thẻ Giao dịch hoặc Thống kê.</p><div class="quick"><button class="btn ghost" data-m="export">Tải file Excel tháng này</button></div>`)
-        + acc('Bảng tháng theo mẫu Excel', null, `<p class="hint" style="margin-top:0">${(d.tpl || []).length ? `Mẫu đang dùng: trang <b>${esc(d.tpl[0].name)}</b>. ` : 'Chưa có mẫu. '}Nạp một trang tháng từ file Excel của Thầy, app sẽ điền số thu, chi, nộp và rút quỹ của tháng đang xem (<b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>) vào đúng ô, đơn vị nghìn đồng. Mỗi tháng Thầy nên nạp lại bằng trang tháng liền trước.</p><div class="quick"><label class="btn ghost">Nạp mẫu từ file Excel<input type="file" id="m-tpl" accept=".xlsx,.xlsm" hidden></label>${(d.tpl || []).length ? '<button class="btn ghost" data-m="sheet">Tạo bảng tháng này</button>' : ''}</div>`)
+        + acc('Bảng tháng theo mẫu Excel', null, `<p class="hint" style="margin-top:0">${(d.tpl || []).length ? `Mẫu đang dùng: trang <b>${esc(d.tpl[0].name)}</b>. ` : 'Chưa có mẫu: Thầy nạp mẫu trên máy tính (nơi có file Excel), mẫu sẽ tự sang iPhone và nút "Tạo bảng tháng này" sẽ hiện ra. '}Nạp một trang tháng từ file Excel của Thầy, app sẽ điền số thu, chi, nộp và rút quỹ của tháng đang xem (<b>${pad(st.ref.getMonth() + 1)}/${st.ref.getFullYear()}</b>) vào đúng ô, đơn vị nghìn đồng. Mỗi tháng Thầy nên nạp lại bằng trang tháng liền trước.</p><div class="quick"><label class="btn ghost">Nạp mẫu từ file Excel<input type="file" id="m-tpl" accept=".xlsx,.xlsm" hidden></label>${(d.tpl || []).length ? '<button class="btn ghost" data-m="sheet">Tạo bảng tháng này</button>' : ''}</div>`)
         + acc('Nhập dữ liệu từ app cũ', null, `<p class="hint" style="margin-top:0">Chọn file dữ liệu đã chuyển từ Money Manager. Khoản nào đã có thì bỏ qua, nên nhập lại không bị trùng.</p><div class="quick"><label class="btn ghost">Chọn file để nhập<input type="file" id="m-import" accept=".json,application/json" hidden></label></div>`);
     } else {
       const plain = list.filter(t => t.type !== 'chuyen');

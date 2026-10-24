@@ -131,7 +131,9 @@ details.tools[open] summary::before{content:"－ "}
 
 dialog{width:min(36rem,calc(100vw - 1rem));max-height:92vh;border:0;border-radius:1.1rem;padding:1.1rem 1.2rem;overflow:auto;background:var(--card);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.35)}
 dialog::backdrop{background:rgba(10,15,35,.55);backdrop-filter:blur(2px)}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.6rem}
+.row>div{min-width:0}.row input,.row select{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+input[type=date]{-webkit-appearance:none;appearance:none;min-height:2.9rem;text-align:left}
 .actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.2rem;flex-wrap:wrap}
 .log{font-size:.8rem;color:var(--mute);margin:.3rem 0;padding-left:.2rem}
 
@@ -302,7 +304,7 @@ input.big{font-size:1.6rem;font-weight:800;text-align:right}
 details.acc{background:var(--card);border:1px solid var(--line);border-radius:1rem;margin:.6rem 0;overflow:hidden}
 details.acc summary{display:flex;justify-content:space-between;align-items:center;padding:.9rem 1rem;cursor:pointer;font-weight:700;list-style:none}
 details.acc summary::-webkit-details-marker{display:none}
-details.acc summary::after{content:"?";font-size:1.4rem;color:var(--mute);margin-left:.6rem;transition:transform .15s}
+details.acc summary::after{content:"\203A";font-size:1.4rem;color:var(--mute);margin-left:.6rem;transition:transform .15s}
 details.acc[open] summary::after{transform:rotate(90deg)}
 details.acc summary span{flex:1}
 details.acc summary em{font-style:normal;font-size:.78rem;background:var(--soft);color:var(--mute);border-radius:1rem;padding:.05rem .55rem}
