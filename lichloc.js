@@ -63,3 +63,64 @@ export function weekKey(s) {
 
 // Giờ "08:00" → "8h00"; "14:30" → "14h30".
 export const shortTime = t => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? `${+m[1]}h${m[2]}` : (t || ''); };
+
+/* ---------- Lịch riêng và trùng giờ ---------- */
+// Lịch riêng (users/{uid}/events): một lần { date, start, end } hoặc lặp hằng tuần { rep: true, weekday 0–6 (0 = Chủ nhật), from, to, start, end, skip: [ngày nghỉ], moved: { ngàyCũ: { date, start, end } } }.
+export const KINDS = { daihoc: 'Đại học', pt: 'Toán 9', them: 'Dạy thêm', rieng: 'Riêng' };
+export const SCHOOL_MIN = 120; // mục của trường chỉ có giờ bắt đầu: tạm coi dài 2 tiếng [CẦN XÁC NHẬN]
+export const OWN_MIN = 60; // lịch riêng chưa ghi giờ kết thúc: tạm coi dài 1 tiếng
+
+export const toMin = t => { const m = /^(\d{1,2})[:h](\d{2})/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
+export const hhmm = n => `${pad(Math.floor(n / 60))}:${pad(n % 60)}`;
+
+// Các lần diễn ra của lịch riêng trong khoảng [from, to] (ngày YYYY-MM-DD), đã trừ buổi nghỉ và tính buổi đổi.
+export function expandEvents(events, from, to) {
+  const out = [];
+  const push = (e, orig, date, start, end, moved) => {
+    if (date < from || date > to) return;
+    out.push({ key: `${e.id}@${orig}`, evId: e.id, orig, date, start, end, moved, rep: !!e.rep, title: e.title, kind: e.kind || 'rieng', place: e.place || '', note: e.note || '' });
+  };
+  for (const e of events || []) {
+    if (!e.rep) { if (e.date) push(e, e.date, e.date, e.start || '', e.end || '', null); continue; }
+    // Duyệt rộng thêm 7 ngày hai đầu để bắt buổi đổi sang ngày trong khoảng.
+    for (let d = addDays(from, -7); d <= addDays(to, 7); d = addDays(d, 1)) {
+      if (parse(d).getUTCDay() !== +e.weekday) continue;
+      if ((e.from && d < e.from) || (e.to && d > e.to) || (e.skip || []).includes(d)) continue;
+      const mv = (e.moved || {})[d];
+      if (mv) push(e, d, mv.date, mv.start || e.start || '', mv.end || e.end || '', d);
+      else push(e, d, d, e.start || '', e.end || '', null);
+    }
+  }
+  return out;
+}
+
+// Chuyển mục thành khoảng phút để so trùng; null nếu không có giờ (hoặc "Cả ngày").
+export function schoolSpan(i) {
+  const s = toMin(i.time);
+  if (s == null || /cả ngày/i.test(i.content || '')) return null;
+  return { key: 't:' + i.id, date: i.date, s, e: s + SCHOOL_MIN, title: i.content };
+}
+export function ownSpan(o) {
+  const s = toMin(o.start);
+  if (s == null) return null;
+  let e = toMin(o.end);
+  if (e == null || e <= s) e = s + OWN_MIN;
+  return { key: 'e:' + o.key, date: o.date, s, e, title: o.title };
+}
+
+// Trả về Map khoá → danh sách tên các mục trùng giờ với nó (cùng ngày, hai khoảng giờ chồng nhau).
+export function findClashes(spans) {
+  const by = {};
+  for (const s of spans.filter(Boolean)) (by[s.date] = by[s.date] || []).push(s);
+  const out = new Map();
+  for (const list of Object.values(by)) {
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      if (a.s < b.e && b.s < a.e) {
+        out.set(a.key, [...(out.get(a.key) || []), b.title]);
+        out.set(b.key, [...(out.get(b.key) || []), a.title]);
+      }
+    }
+  }
+  return out;
+}

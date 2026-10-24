@@ -48,8 +48,8 @@ export function buildWeek(tasks, habits, today = vnDate(0), lichMon = []) {
 }
 
 // weeks: các tài liệu lịch tuần của trường; cfg: vai trò của Thầy.
-function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG) {
-  const mine = d => mineOnDate(weeks, cfg, d);
+function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG, events = []) {
+  const mine = d => mineOnDate(weeks, cfg, d, events);
   if (MODE === 'week') return buildWeek(tasks, habits, vnDate(0), mine(vnDate(1)));
   if (MODE === 'evening') return buildEvening(mine(vnDate(1)));
   return buildMorning(tasks, vnDate(0), vnDate(1), mine(vnDate(0)));
@@ -71,7 +71,11 @@ async function main() {
       { id: 'c', date: t, time: '15:00', content: 'Họp của khoa khác', chutri: '', thanhphan: 'Khoa Ngữ văn' },
       { id: 'd', date: m, time: '07:30', content: 'Hội nghị đảng viên', chutri: '', thanhphan: 'Toàn thể đảng viên' }
     ] }];
-    console.log(MODE, JSON.stringify(build(tasks, habits, weeks), null, 2));
+    const events = [
+      { id: 'e1', title: 'Dạy Toán 9', kind: 'pt', rep: true, weekday: new Date().getDay(), start: '14:30', end: '16:00' },
+      { id: 'e2', title: 'Dạy thêm Toán 7', kind: 'them', date: m, start: '07:00', end: '09:00' }
+    ];
+    console.log(MODE, JSON.stringify(build(tasks, habits, weeks, loc.DEFAULT_CFG, events), null, 2));
     return;
   }
 
@@ -95,8 +99,9 @@ async function main() {
     const [tasks, habits] = await Promise.all(['tasks', 'habits'].map(async c =>
       (await db.collection(`users/${uid}/${c}`).get()).docs.map(x => x.data())));
     const weeks = (await db.collection(`users/${uid}/lich`).get()).docs.map(x => x.data());
+    const events = (await db.collection(`users/${uid}/events`).get()).docs.map(x => ({ ...x.data(), id: x.id }));
     const cfgSnap = await db.doc(`users/${uid}/cfg/lich`).get();
-    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG);
+    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG, events);
     if (!msg) { console.log(`Không có gì để nhắc (${MODE}).`); continue; }
     const res = await messaging.sendEach(docs.map(d => ({
       token: d.data().token,

@@ -120,14 +120,24 @@ export function describeChanges(ch) {
 }
 
 // Tóm tắt mục trong ngày cho thông báo: "8h00 Họp…; 14h00 …".
+// Mục có `clash` (danh sách tên mục trùng giờ) thì thêm cảnh báo cuối câu.
 export function describeDay(items) {
   const s = items.slice().sort((a, b) => a.time.localeCompare(b.time));
-  return s.slice(0, 3).map(i => `${loc.shortTime(i.time)} ${i.content}`).join('; ') + (s.length > 3 ? ` (+${s.length - 3})` : '');
+  const bad = s.find(i => i.clash && i.clash.length);
+  return s.slice(0, 3).map(i => `${loc.shortTime(i.time)} ${i.content}`).join('; ') + (s.length > 3 ? ` (+${s.length - 3})` : '') +
+    (bad ? ` ⚠ Trùng giờ: ${bad.content} và ${bad.clash[0]}` : '');
 }
 
-// Mục của Thầy trong một ngày, tính lại theo vai trò hiện hành.
-export function mineOnDate(weekDocs, cfg, date) {
-  return weekDocs.flatMap(w => w.items || []).filter(i => i.date === date && loc.matchItem(i, cfg).mine);
+// Mục của Thầy trong một ngày: lịch trường đã lọc theo vai trò, cộng lịch riêng (events), kèm `clash` nếu trùng giờ.
+// Mỗi phần tử có dạng { time, content, clash? } để dùng với describeDay.
+export function mineOnDate(weekDocs, cfg, date, events = []) {
+  const school = weekDocs.flatMap(w => w.items || []).filter(i => i.date === date && loc.matchItem(i, cfg).mine);
+  const own = loc.expandEvents(events, date, date);
+  const clash = loc.findClashes([...school.map(loc.schoolSpan), ...own.map(loc.ownSpan)]);
+  return [
+    ...school.map(i => ({ time: i.time, content: i.content, clash: clash.get('t:' + i.id) })),
+    ...own.map(o => ({ time: o.start || '00:00', content: o.title, clash: clash.get('e:' + o.key) }))
+  ];
 }
 
 /* ---------- Chạy ---------- */

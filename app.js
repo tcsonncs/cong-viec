@@ -1,8 +1,8 @@
 import * as cfg from './firebase-config.js';
 import { initMoney } from './chitieu.js?v=10';
-import { initLich } from './lich.js?v=11';
+import { initLich } from './lich.js?v=12';
 const firebaseConfig = cfg.firebaseConfig;
-const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg'];
+const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg', 'events'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
 const vapidKey = cfg.vapidKey || '';
 
@@ -203,6 +203,15 @@ function parseQuick(text) {
   let t = ' ' + text.trim() + ' ';
   const now = new Date();
   const add = n => { const d = new Date(now); d.setDate(d.getDate() + n); return toStr(d); };
+  // Giờ trong câu: "14h", "7h30", "14 giờ", "14:30", "3 giờ chiều". Có giờ thì app mở hộp thêm Lịch thay cho Việc.
+  let time = '';
+  const tm = t.match(/\s(?:lúc\s+)?(\d{1,2})\s*(?:h|giờ|:)\s*(\d{2})?(?:\s*(sáng|chiều|tối))?(?=\s|$|[,.;])/i);
+  if (tm && +tm[1] <= 23 && (!tm[2] || +tm[2] < 60)) {
+    let h = +tm[1];
+    if (tm[3] && /chiều|tối/i.test(tm[3]) && h < 12) h += 12;
+    time = `${pad(h)}:${tm[2] || '00'}`;
+    t = t.replace(tm[0], ' ');
+  }
   let due = '';
   const lead = '(?:(?:trước|vào|hạn|đến|hết)\\s+)?(?:ngày\\s+)?';
   let m;
@@ -236,7 +245,7 @@ function parseQuick(text) {
     const c = data.contacts.find(c => c.name.toLowerCase() === n) || data.contacts.find(c => c.name.toLowerCase().includes(n));
     return c ? c.name : name;
   };
-  return { title: title || text.trim(), due, assignee: assignee && known(assignee), contact: contact && known(contact) };
+  return { title: title || text.trim(), due, time, assignee: assignee && known(assignee), contact: contact && known(contact) };
 }
 
 /* ---------- Vẽ giao diện ---------- */
@@ -644,6 +653,7 @@ function quickAdd() {
   if (!q || !q.value.trim()) return;
   const p = parseQuick(q.value);
   q.value = '';
+  if (p.time) { lich.openEvent({ title: p.title, date: p.due || today(), start: p.time, quick: true }); return; }
   openTask({ title: p.title, due: p.due, assignee: p.assignee, contact: p.contact, group: view === 'tasks' && filter.group ? filter.group : 'quanly', prio: 3, status: 'todo' });
 }
 
