@@ -325,6 +325,23 @@ details.acc[open]{border-color:var(--frame,var(--accent))}
 .card.lc.own{border-left:4px solid var(--gc)}
 .card.lc.clash{border:2px solid var(--red)}
 .lc .chips{margin-top:.3rem}
+.lbox{border:1.5px solid var(--line);border-radius:1rem;padding:0 .75rem .6rem;margin:1rem 0;background:var(--soft)}
+.lbox>h2{margin:.8rem 0 .4rem;text-transform:none;letter-spacing:0;font-size:.95rem;color:var(--ink)}
+.lbox.own{border-color:#3b82c4}.lbox.sch{border-color:var(--accent)}
+.lday{margin:.9rem 0 .35rem;font-size:.8rem;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.lday.red{color:var(--red)}
+.lsheet{overflow-x:auto;margin:.2rem -.2rem .4rem}
+.lsheet table{border-collapse:collapse;width:100%;min-width:34rem;table-layout:fixed;font-size:.78rem}
+.lsheet th,.lsheet td{border:1px solid var(--line);padding:.25rem;vertical-align:top;background:var(--card)}
+.lsheet thead th{text-align:center;font-weight:700;background:var(--soft)}
+.lsheet th small{display:block;font-weight:500;color:var(--mute)}
+.lsheet th.pn{width:3.4rem;text-align:center;background:var(--soft);vertical-align:middle}
+.lsheet .today{background:var(--redbg,var(--soft))}
+.lsheet th.today{color:var(--red)}
+.lsheet .tc{border-left:3px solid var(--gc);padding:.12rem .3rem;margin:.15rem 0;border-radius:.3rem;background:var(--soft);overflow-wrap:anywhere;line-height:1.25}
+.lsheet .tc i{display:block;font-style:normal;color:var(--mute);font-size:.72rem}
+.lsheet .tc.clash{outline:2px solid var(--red)}
+.lsheet .tc.isdone{opacity:.5;text-decoration:line-through}
 .note.clashn{color:var(--red);border-color:var(--red);font-weight:600}
 .lrole{border:1px solid var(--line);border-radius:.9rem;padding:.6rem .7rem;margin:.6rem 0;display:grid;gap:.45rem}
 .lrole .lrow{display:flex;gap:.5rem;align-items:center}
