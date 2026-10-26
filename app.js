@@ -577,21 +577,32 @@ Nếu không có việc nào, trả về mảng rỗng.`;
       title: { type: 'STRING' }, due: { type: 'STRING' }, assignee: { type: 'STRING' }, contact: { type: 'STRING' },
       group: { type: 'STRING', enum: Object.keys(GROUPS) }, prio: { type: 'INTEGER' }, notes: { type: 'STRING' } } } } } };
   let last = '', busy = false;
-  // Mô hình đang quá tải (503) thì thử mô hình khác, hết một vòng thì chờ vài giây rồi thử lại (tối đa 3 vòng).
-  for (const model of [...GEMINI_MODELS, ...GEMINI_MODELS, ...GEMINI_MODELS]) {
-    if (busy && model === GEMINI_MODELS[0]) await new Promise(r => setTimeout(r, 5000));
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body) });
-    if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
-    if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
-    if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
-    if (res.status === 503 || res.status === 500) { busy = true; continue; }
-    if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
-    const j = await res.json();
-    const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
-    return JSON.parse(txt);
+  // Máy chủ Gemini bận (503/500) thì đổi mô hình ngay, không chờ; hết một vòng mới chờ 2 giây.
+  // Mỗi lượt chờ tối đa 25 giây, quá thì bỏ lượt đó để không treo cả phút.
+  for (let vong = 0; vong < 2; vong++) {
+    if (vong) await new Promise(r => setTimeout(r, 2000));
+    for (const model of GEMINI_MODELS) {
+      const ctrl = new AbortController();
+      const hẹn = setTimeout(() => ctrl.abort(), 25000);
+      let res;
+      try {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body), signal: ctrl.signal });
+      } catch {
+        last = 'Mạng chậm hoặc máy chủ không trả lời';
+        continue;
+      } finally { clearTimeout(hẹn); }
+      if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
+      if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
+      if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
+      if (res.status === 503 || res.status === 500) { busy = true; last = 'Máy chủ Gemini đang bận'; continue; }
+      if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
+      const j = await res.json();
+      const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
+      return JSON.parse(txt);
+    }
   }
-  throw new Error(busy ? 'Gemini đang quá tải (đã thử nhiều lần). Thầy thử lại sau vài phút.' : (last || 'Không gọi được Gemini'));
+  throw new Error(busy ? 'Máy chủ Gemini đang bận (đã thử 4 lượt). Thầy chờ một lát rồi thử lại.' : (last || 'Không gọi được Gemini'));
 }
 
 function reviewExtracted(list) {
@@ -627,14 +638,16 @@ function reviewExtracted(list) {
 
 async function importImages(files) {
   if (!getKey() && !askKey()) return;
-  dlg().innerHTML = `<p>Đang đọc ảnh, thường 4–8 giây...</p>`;
+  const bat = Date.now();
+  dlg().innerHTML = `<p>Đang đọc ảnh… <b id="dem">0</b> giây</p>`;
   dlg().showModal();
+  const hen = setInterval(() => { const o = $('#dem'); if (o) o.textContent = Math.floor((Date.now() - bat) / 1000); }, 1000);
   try { reviewExtracted(await extractTasks(files)); }
   catch (err) {
     console.error(err);
     dlg().innerHTML = `<p>${esc(err.message || 'Không đọc được ảnh.')}</p><div class="actions"><button type="button" class="btn" id="cancel">Đóng</button></div>`;
     $('#cancel').onclick = () => dlg().close();
-  }
+  } finally { clearInterval(hen); }
 }
 
 /* ---------- Nhập việc từ file JSON (trợ lý soạn sẵn); Thầy xem lại rồi mới lưu ---------- */
