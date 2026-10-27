@@ -539,7 +539,7 @@ async function importVcf(file) {
 /* ---------- Đọc ảnh (giấy viết tay, tin nhắn Zalo) bằng Gemini, Thầy xem lại rồi mới lưu ---------- */
 const KEY_NAME = 'appcv-gemini';
 // Xếp theo tốc độ đo thật (27/10/2026): bản lite nhanh nhất; 2.5-flash có khoá nay trả 404 nên để sau. Bản lite không nhận thinkingBudget.
-const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'];
 const NO_THINK = m => !/lite/.test(m);
 let trace = [];   // ghi thời gian từng bước đọc ảnh để biết chậm ở đâu
 const stage = t => { const o = $('#gd'); if (o) o.textContent = t; };
@@ -585,37 +585,45 @@ Nếu không có việc nào, trả về mảng rỗng.`;
     type: 'ARRAY', items: { type: 'OBJECT', required: ['title'], properties: {
       title: { type: 'STRING' }, due: { type: 'STRING' }, assignee: { type: 'STRING' }, contact: { type: 'STRING' },
       group: { type: 'STRING', enum: Object.keys(GROUPS) }, prio: { type: 'INTEGER' }, notes: { type: 'STRING' } } } } } };
-  let last = '', busy = false, bad400 = 0;
-  // Máy chủ Gemini bận (503/500) thì đổi mô hình ngay, không chờ; hết một vòng mới chờ 2 giây.
-  // Mỗi lượt chờ tối đa 25 giây, quá thì bỏ lượt đó để không treo cả phút.
-  for (let vong = 0; vong < 1; vong++) {
-    if (vong) await new Promise(r => setTimeout(r, 2000));
-    for (const model of GEMINI_MODELS) {
-      stage('Đang chờ ' + model + '…');
-      const tm = performance.now();
-      const ghi = kq => trace.push(`${model} ${kq} ${((performance.now() - tm) / 1000).toFixed(1)}s`);
-      const ctrl = new AbortController();
-      const hẹn = setTimeout(() => ctrl.abort(), 12000);
-      let res;
-      const bm = NO_THINK(model) ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { thinkingBudget: 0 } } } : body;
-      try {
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(bm), signal: ctrl.signal });
-      } catch {
-        ghi('không trả lời');
-        last = 'Mạng chậm hoặc máy chủ không trả lời';
-        continue;
-      } finally { clearTimeout(hẹn); }
-      ghi(res.status);
-      if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
-      if (res.status === 400) { if (/API key|API_KEY/i.test(await res.text())) throw new Error('Khoá Gemini không đúng. Thầy bấm "Khoá Gemini" để dán lại khoá.'); last = 'Mô hình ' + model + ' không nhận yêu cầu'; bad400 = (bad400 || 0) + 1; continue; }
-      if (res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
-      if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
-      if (res.status === 503 || res.status === 500) { busy = true; last = 'Máy chủ Gemini đang bận'; continue; }
-      if (!res.ok) throw new Error('Gemini báo lỗi mã ' + res.status);
-      const j = await res.json();
-      const txt = j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]';
-      return JSON.parse(txt);
+  // Chạy song song từng nhóm mô hình, ai trả lời đúng trước thì lấy, huỷ các mô hình còn lại.
+  // Nhóm 1 (bản lite, nhanh); nhóm 2 (bản mạnh hơn) chỉ chạy khi cả nhóm 1 hỏng.
+  const fatal = m => Object.assign(new Error(m), { fatal: true });
+  async function goi(model, ctrl) {
+    const tm = performance.now();
+    const ghi = kq => trace.push(`${model} ${kq} ${((performance.now() - tm) / 1000).toFixed(1)}s`);
+    const bm = NO_THINK(model) ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { thinkingBudget: 0 } } } : body;
+    let res;
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(bm), signal: ctrl.signal });
+    } catch { ghi(ctrl.signal.aborted ? 'bị huỷ/quá giờ' : 'lỗi mạng'); throw new Error('Mạng chậm hoặc máy chủ không trả lời'); }
+    ghi(res.status);
+    if (res.status === 400 && /API key|API_KEY/i.test(await res.text())) throw fatal('Khoá Gemini không đúng. Thầy bấm "Khoá Gemini" để dán lại khoá.');
+    if (res.status === 403) throw fatal('Gemini từ chối khoá hoặc yêu cầu (mã 403). Thầy bấm "Khoá Gemini" để dán lại khoá.');
+    if (res.status === 429) throw fatal('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
+    if (res.status === 503 || res.status === 500) throw Object.assign(new Error('Máy chủ Gemini đang bận'), { busy: true });
+    if (!res.ok) throw new Error('Mô hình ' + model + ' báo mã ' + res.status);
+    const j = await res.json();
+    return JSON.parse(j.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '[]');
+  }
+  async function dua(models, gioiHan) {
+    const ctrls = models.map(() => new AbortController());
+    const hen = setTimeout(() => ctrls.forEach(c => c.abort()), gioiHan);
+    try {
+      stage('Đang hỏi ' + models.join(' và ') + '…');
+      const kq = await Promise.any(models.map((m, i) => goi(m, ctrls[i]).then(r => { ctrls.forEach((c, k) => k !== i && c.abort()); return r; })));
+      return kq;
+    } finally { clearTimeout(hen); }
+  }
+  let last = '', busy = false;
+  for (const [nhom, gioiHan] of [[GEMINI_MODELS.slice(0, 2), 9000], [GEMINI_MODELS.slice(2), 20000]]) {
+    try { return await dua(nhom, gioiHan); }
+    catch (e) {
+      const loi = e.errors || [e];
+      const f = loi.find(x => x.fatal);
+      if (f) throw f;
+      if (loi.some(x => x.busy)) busy = true;
+      last = loi[0]?.message || last;
     }
   }
   throw new Error(busy ? 'Máy chủ Gemini đang bận (đã thử nhiều mô hình). Thầy chờ một lát rồi thử lại.' : (last || 'Không gọi được Gemini'));
