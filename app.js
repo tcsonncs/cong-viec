@@ -539,6 +539,8 @@ async function importVcf(file) {
 /* ---------- Đọc ảnh (giấy viết tay, tin nhắn Zalo) bằng Gemini, Thầy xem lại rồi mới lưu ---------- */
 const KEY_NAME = 'appcv-gemini';
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
+let trace = [];   // ghi thời gian từng bước đọc ảnh để biết chậm ở đâu
+const stage = t => { const o = $('#gd'); if (o) o.textContent = t; };
 const getKey = () => { try { return localStorage.getItem(KEY_NAME) || ''; } catch { return ''; } };
 
 function askKey() {
@@ -570,7 +572,12 @@ Với tin nhắn Zalo: "contact" là người nhắn; nếu trong ảnh nói n�
 "group" chọn một trong: giangday (giảng dạy), nckh (nghiên cứu khoa học), quanly (quản lý, hành chính), giaotiep (gọi, nhắn), thoiquen, canhan.
 Nếu không có việc nào, trả về mảng rỗng.`;
   const parts = [{ text: prompt }];
+  trace = [];
+  stage('Đang nén ảnh…');
+  const t0 = performance.now();
   for (const f of files) parts.push({ inlineData: { mimeType: 'image/jpeg', data: await shrink(f) } });
+  const kb = Math.round(parts.slice(1).reduce((a, p) => a + p.inlineData.data.length, 0) * 0.75 / 1024);
+  trace.push(`nén ảnh ${((performance.now() - t0) / 1000).toFixed(1)}s (${kb} KB)`);
   // thinkingBudget 0: đo thực tế nhanh 2,5 lần (10s → 4s) mà vẫn đọc đúng việc và hạn.
   const body = { contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 }, responseSchema: {
     type: 'ARRAY', items: { type: 'OBJECT', required: ['title'], properties: {
@@ -582,6 +589,9 @@ Nếu không có việc nào, trả về mảng rỗng.`;
   for (let vong = 0; vong < 2; vong++) {
     if (vong) await new Promise(r => setTimeout(r, 2000));
     for (const model of GEMINI_MODELS) {
+      stage('Đang chờ ' + model + '…');
+      const tm = performance.now();
+      const ghi = kq => trace.push(`${model} ${kq} ${((performance.now() - tm) / 1000).toFixed(1)}s`);
       const ctrl = new AbortController();
       const hẹn = setTimeout(() => ctrl.abort(), 25000);
       let res;
@@ -589,9 +599,11 @@ Nếu không có việc nào, trả về mảng rỗng.`;
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() }, body: JSON.stringify(body), signal: ctrl.signal });
       } catch {
+        ghi('không trả lời');
         last = 'Mạng chậm hoặc máy chủ không trả lời';
         continue;
       } finally { clearTimeout(hẹn); }
+      ghi(res.status);
       if (res.status === 404) { last = 'Không tìm thấy mô hình ' + model; continue; }
       if (res.status === 400 || res.status === 403) throw new Error('Gemini từ chối khoá hoặc yêu cầu (mã ' + res.status + '). Thầy bấm "Khoá Gemini" để dán lại khoá.');
       if (res.status === 429) throw new Error('Đã dùng hết lượt miễn phí lúc này. Thầy chờ vài phút rồi thử lại.');
@@ -639,13 +651,19 @@ function reviewExtracted(list) {
 async function importImages(files) {
   if (!getKey() && !askKey()) return;
   const bat = Date.now();
-  dlg().innerHTML = `<p>Đang đọc ảnh… <b id="dem">0</b> giây</p>`;
+  dlg().innerHTML = `<p>Đang đọc ảnh… <b id="dem">0</b> giây</p><p id="gd" style="font-size:12px;opacity:.7"></p>`;
   dlg().showModal();
   const hen = setInterval(() => { const o = $('#dem'); if (o) o.textContent = Math.floor((Date.now() - bat) / 1000); }, 1000);
-  try { reviewExtracted(await extractTasks(files)); }
+  try {
+    const kq = await extractTasks(files);
+    stage('Đang hiện kết quả…');
+    reviewExtracted(kq);
+    const f = $('#xf') || dlg();
+    f.insertAdjacentHTML('beforeend', `<p style="font-size:12px;opacity:.7">Thời gian: ${esc(trace.join(' → '))} · tổng ${((Date.now() - bat) / 1000).toFixed(1)}s</p>`);
+  }
   catch (err) {
     console.error(err);
-    dlg().innerHTML = `<p>${esc(err.message || 'Không đọc được ảnh.')}</p><div class="actions"><button type="button" class="btn" id="cancel">Đóng</button></div>`;
+    dlg().innerHTML = `<p>${esc(err.message || 'Không đọc được ảnh.')}</p><p style="font-size:12px;opacity:.7">${esc(trace.join(' → '))}</p><div class="actions"><button type="button" class="btn" id="cancel">Đóng</button></div>`;
     $('#cancel').onclick = () => dlg().close();
   } finally { clearInterval(hen); }
 }
