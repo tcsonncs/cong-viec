@@ -40,6 +40,7 @@ export function initMoney(ctx) {
     return kb === 'dautu' && ka !== 'dautu' ? 'nop' : ka === 'dautu' && kb !== 'dautu' ? 'rut' : 'khac';
   };
   const num = v => +String(v || '').replace(/\D/g, '') || 0;
+  const numS = v => (/^\s*-/.test(String(v || '')) ? -1 : 1) * num(v);
   const catOf = id => data().cats.find(c => c.id === id);
   const walletOf = id => data().wallets.find(w => w.id === id);
   const ymd = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -231,7 +232,8 @@ export function initMoney(ctx) {
 
   /* ----- Hộp thêm / sửa giao dịch ----- */
   const catOptions = (type, sel) => data().cats.filter(c => c.type === type).map(c => `<option value="${c.id}"${c.id === sel ? ' selected' : ''}>${esc(c.emoji + ' ' + c.name)}</option>`).join('');
-  const walletOptions = sel => data().wallets.filter(w => !hiddenW(w) || w.id === sel).map(w => `<option value="${w.id}"${w.id === sel ? ' selected' : ''}>${esc(w.name)}</option>`).join('');
+  // all = true (chuyển ví): hiện cả ví ẩn, gắn nhãn "(ẩn)"
+  const walletOptions = (sel, all) => data().wallets.filter(w => all || !hiddenW(w) || w.id === sel).map(w => `<option value="${w.id}"${w.id === sel ? ' selected' : ''}>${esc(w.name)}${hiddenW(w) ? ' (ẩn)' : ''}</option>`).join('');
   const bindMoneyInput = el => el.addEventListener('input', () => { const n = num(el.value); el.value = n ? n.toLocaleString('vi-VN') : ''; });
 
   function openTx(t = {}) {
@@ -256,6 +258,9 @@ export function initMoney(ctx) {
       $('#m-tobox').style.display = type === 'chuyen' ? '' : 'none';
       $('#m-wl').textContent = type === 'chuyen' ? 'Từ ví' : 'Ví';
       if (type !== 'chuyen') f.cat.innerHTML = catOptions(type, t.type === type ? t.cat : '');
+      const isMove = type === 'chuyen', fromV = f.wallet.value, toV = f.to.value;
+      f.wallet.innerHTML = walletOptions(fromV, isMove);
+      f.to.innerHTML = walletOptions(toV, true);
     };
     apply();
     f.querySelectorAll('#m-type button').forEach(b => { b.onclick = () => { type = b.dataset.t; apply(); }; });
@@ -278,16 +283,17 @@ export function initMoney(ctx) {
 
   function openWallet(w = {}) {
     const isNew = !w.id;
+    const cur = isNew ? 0 : walletBalance(w);
     dlg().innerHTML = `<form method="dialog" id="mwf"><label>Tên ví</label><input name="name" required value="${esc(w.name || '')}" placeholder="Ví dụ: Tiền mặt, Vietcombank, Thẻ tín dụng">
-      <label>Số dư ban đầu (₫)</label><input name="start" inputmode="numeric" autocomplete="off" value="${w.start ? (+w.start).toLocaleString('vi-VN') : ''}" placeholder="0">
-      <p class="hint">Số dư lúc Thầy bắt đầu ghi sổ. Các khoản thu chi ghi sau sẽ cộng trừ vào đây.</p>
+      <label>${isNew ? 'Số dư ban đầu (₫)' : 'Số dư hiện tại (₫)'}</label><input name="start" inputmode="text" autocomplete="off" value="${cur ? cur.toLocaleString('vi-VN') : ''}" placeholder="0">
+      <p class="hint">${isNew ? 'Số dư lúc Thầy bắt đầu ghi sổ. Các khoản thu chi ghi sau sẽ cộng trừ vào đây.' : 'Sửa số này khi số dư trong app lệch so với thực tế (có thể nhập số âm). App tự điều chỉnh số dư gốc của ví, các giao dịch cũ giữ nguyên.'}</p>
       <label>Loại ví</label><select name="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}"${kindOf(w) === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
       <p class="hint">Chuyển tiền từ ví khác sang "ví đầu tư tích lũy" tính là nộp vào quỹ; chiều ngược lại là rút.</p>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" name="hide"${hiddenW(w) ? ' checked' : ''}> Ẩn ví này</label>
       <p class="hint">Ví ẩn không hiện khi chọn ví và không tính vào số dư hiện tại. Hợp với ví vay mượn, đầu tư hoặc ví ít dùng. Bỏ tích để hiện lại.</p>
       <div class="actions">${isNew ? '' : '<button type="button" class="btn danger" id="del">Xoá</button>'}<button type="button" class="btn ghost" id="cancel">Đóng</button><button class="btn" value="save">Lưu</button></div></form>`;
     const f = $('#mwf');
-    bindMoneyInput(f.start);
+    f.start.addEventListener('input', () => { const n = numS(f.start.value); f.start.value = n ? n.toLocaleString('vi-VN') : (/^\s*-/.test(f.start.value) ? '-' : ''); });
     $('#cancel').onclick = () => dlg().close();
     if (!isNew) $('#del').onclick = async () => {
       const mine = data().txs.filter(t => t.wallet === w.id || t.to === w.id);
@@ -300,7 +306,7 @@ export function initMoney(ctx) {
       dlg().close();
     };
     dlg().showModal();
-    f.onsubmit = async () => { await store().save('wallets', { ...w, name: f.name.value.trim(), start: num(f.start.value), kind: f.kind.value, archived: f.hide.checked, ignore: f.hide.checked }); };
+    f.onsubmit = async () => { await store().save('wallets', { ...w, name: f.name.value.trim(), start: isNew ? numS(f.start.value) : (+w.start || 0) + (numS(f.start.value) - cur), kind: f.kind.value, archived: f.hide.checked, ignore: f.hide.checked }); };
   }
 
   function openCat(c = {}) {

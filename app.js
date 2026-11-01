@@ -1,5 +1,5 @@
 ﻿import * as cfg from './firebase-config.js';
-import { initMoney } from './chitieu.js?v=10';
+import { initMoney } from './chitieu.js?v=24';
 import { initLich } from './lich.js?v=15';
 import { initTin } from './tin.js?v=16';
 const firebaseConfig = cfg.firebaseConfig;
