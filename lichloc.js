@@ -51,6 +51,26 @@ const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date
 export const addDays = (s, n) => { const d = parse(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
 export const mondayOf = s => { const d = parse(s); return addDays(s, -((d.getUTCDay() + 6) % 7)); };
 
+/* ---------- Sinh nhật trong danh bạ ---------- */
+// Sinh nhật Thầy gõ tự do: "12/05/1985", "12/5", "12-05-85". Hai số đầu = ngày, tháng; năm chỉ dùng khi đủ 4 chữ số.
+export function birthdayDM(s) {
+  const m = /(\d{1,2})\s*[/\-.]\s*(\d{1,2})(?:\s*[/\-.]\s*(\d{4}))?/.exec(String(s || ''));
+  if (!m) return null;
+  const d = +m[1], mo = +m[2];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return { d, m: mo, y: m[3] ? +m[3] : null };
+}
+// Người có sinh nhật từ ngày `from` (YYYY-MM-DD) đến `days` ngày sau: [{c, date, inDays, age}].
+export function birthdaysSoon(contacts, from, days = 7) {
+  const out = [];
+  const bd = (contacts || []).map(c => ({ c, b: birthdayDM(c.birthday) })).filter(x => x.b);
+  for (let i = 0; i <= days; i++) {
+    const date = addDays(from, i), [y, mo, d] = date.split('-').map(Number);
+    for (const { c, b } of bd) if (b.m === mo && b.d === d) out.push({ c, date, inDays: i, age: b.y ? y - b.y : null });
+  }
+  return out;
+}
+
 // Khoá tuần ISO dạng YYYY-Www, tính từ ngày thứ Hai.
 export function weekKey(s) {
   const mon = parse(mondayOf(s));

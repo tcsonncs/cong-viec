@@ -1,7 +1,8 @@
 ﻿import * as cfg from './firebase-config.js';
-import { initMoney } from './chitieu.js?v=24';
-import { initLich } from './lich.js?v=15';
+import { initMoney } from './chitieu.js?v=26';
+import { initLich } from './lich.js?v=28';
 import { initTin } from './tin.js?v=16';
+import { birthdaysSoon } from './lichloc.js?v=28';
 const firebaseConfig = cfg.firebaseConfig;
 const COLS = ['tasks', 'contacts', 'habits', 'wallets', 'cats', 'txs', 'recur', 'tpl', 'lich', 'cfg', 'events', 'tin'];
 const emptyData = () => Object.fromEntries(COLS.map(c => [c, []]));
@@ -301,7 +302,9 @@ function renderToday() {
     <div class="stat${over.length ? ' red' : ''}"><b>${over.length}</b><span>Quá hạn</span></div>
     <div class="stat amber"><b>${now.length}</b><span>Hôm nay</span></div>
     <div class="stat green"><b>${habDone}/${data.habits.length}</b><span>Thói quen</span></div></div>`;
-  return stats + quickBar + lich.todayBlock() +
+  const bds = birthdaysSoon(data.contacts, td, 7);
+  const bdBlock = bds.length ? `<h2>Sinh nhật sắp tới <span class="count">${bds.length}</span></h2>${bds.map(x => `<div class="card contact bday" data-contact="${x.c.id}"><div class="avatar">🎂</div><div class="body"><div class="t">${esc(x.c.name)}</div><div class="chips"><span class="chip ${x.inDays === 0 ? 'amber' : ''}">${x.inDays === 0 ? 'Hôm nay' : x.inDays === 1 ? 'Ngày mai' : 'Còn ' + x.inDays + ' ngày'}</span>${x.age ? `<span class="chip">${x.age} tuổi</span>` : ''}</div>${x.c.family ? `<div class="cinfo">👨‍👩‍👧 ${esc(x.c.family)}</div>` : ''}${x.c.hobby ? `<div class="cinfo">⭐ ${esc(x.c.hobby)}</div>` : ''}</div></div>`).join('')}` : '';
+  return stats + quickBar + lich.todayBlock() + bdBlock +
     (html || '<div class="empty"><span class="ico">🎉</span>Hôm nay chưa có việc đến hạn.<br>Gõ việc mới ở ô phía trên.</div>') +
     tin.todayBlock();
 }
@@ -397,6 +400,7 @@ function renderContacts() {
     const ini = (c.name.trim().split(/\s+/).pop() || '?')[0].toUpperCase();
     return `<div class="card contact"><div class="avatar">${esc(ini)}</div><div class="body" data-contact="${c.id}"><div class="t">${esc(c.name)}</div>
       <div class="chips">${c.role ? `<span class="chip">${esc(c.role)}</span>` : ''}${c.unit ? `<span class="chip">${esc(c.unit)}</span>` : ''}</div>
+      ${[['🎂', c.birthday], ['🏠', c.address], ['⭐', c.hobby], ['👨‍👩‍👧', c.family], ...(c.extra || []).map(x => ['•', (x.k ? x.k + ': ' : '') + x.v])].filter(x => x[1]).map(x => `<div class="cinfo"><span>${x[0]}</span>${esc(x[1])}</div>`).join('')}
       ${c.note ? `<div class="log">${esc(c.note)}</div>` : ''}</div><div class="links">${links}</div></div>`;
   }).join('');
   return `<div class="quick"><button class="btn" id="add-contact">+ Thêm người</button>
@@ -483,6 +487,13 @@ function openContact(c) {
     <div class="row"><div><label>Số điện thoại</label><input name="phone" type="tel" value="${esc(c.phone || '')}"></div>
     <div><label>Zalo (số)</label><input name="zalo" type="tel" value="${esc(c.zalo || '')}"></div></div>
     <label>Email</label><input name="email" type="email" value="${esc(c.email || '')}">
+    <label>Địa chỉ nhà riêng</label><input name="address" value="${esc(c.address || '')}">
+    <label>Sinh nhật</label><input name="birthday" value="${esc(c.birthday || '')}" placeholder="Ví dụ: 12/05/1985 hoặc 12/05">
+    <label>Sở thích</label><textarea name="hobby" placeholder="Ví dụ: câu cá, cà phê, bóng đá…">${esc(c.hobby || '')}</textarea>
+    <label>Gia đình, con cái</label><textarea name="family" placeholder="Ví dụ: vợ tên Lan; con Minh (lớp 5), con An (3 tuổi)">${esc(c.family || '')}</textarea>
+    <label>Thông tin khác (tự thêm)</label><div id="xrows"></div>
+    <div class="quick"><button type="button" class="btn ghost sm" id="xadd">+ Thêm mục</button></div>
+    <div class="quick" id="xsug">${['Quê quán', 'Món ăn yêu thích', 'Ngày cưới', 'Nơi làm việc cũ', 'Tính cách', 'Việc cần nhớ'].map(k => `<button type="button" class="chip" data-xk="${k}">+ ${k}</button>`).join('')}</div>
     <label>Ghi chú riêng</label><textarea name="note">${esc(c.note || '')}</textarea>
     <div class="actions">
       ${isNew ? '' : '<button type="button" class="btn danger" id="del">Xoá</button>'}
@@ -490,6 +501,17 @@ function openContact(c) {
       <button class="btn" value="save">Lưu</button>
     </div></form>`;
   dlg().showModal();
+  const addRow = (k = '', v = '') => {
+    const r = document.createElement('div');
+    r.className = 'xrow';
+    r.innerHTML = `<input class="xk" placeholder="Tên mục (vd: Quê quán)" value="${esc(k)}"><input class="xv" placeholder="Nội dung" value="${esc(v)}"><button type="button" class="btn ghost sm xdel" aria-label="Xoá mục">✕</button>`;
+    r.querySelector('.xdel').onclick = () => r.remove();
+    $('#xrows').appendChild(r);
+    return r;
+  };
+  (c.extra || []).forEach(x => addRow(x.k, x.v));
+  $('#xadd').onclick = () => addRow().querySelector('.xk').focus();
+  $('#xsug').onclick = e => { const b = e.target.closest('[data-xk]'); if (b) addRow(b.dataset.xk).querySelector('.xv').focus(); };
   $('#cancel').onclick = () => dlg().close();
   if (!isNew) $('#del').onclick = async () => {
     if (confirm('Xoá người này khỏi danh bạ?')) { await store.remove('contacts', c.id); dlg().close(); }
@@ -497,7 +519,9 @@ function openContact(c) {
   $('#cf').onsubmit = async e => {
     const f = new FormData(e.target);
     await store.save('contacts', { ...c, name: f.get('name').trim(), unit: f.get('unit').trim(), role: f.get('role'),
-      phone: f.get('phone').trim(), zalo: f.get('zalo').trim(), email: f.get('email').trim(), note: f.get('note') });
+      phone: f.get('phone').trim(), zalo: f.get('zalo').trim(), email: f.get('email').trim(), note: f.get('note'),
+      address: f.get('address').trim(), birthday: f.get('birthday').trim(), hobby: f.get('hobby').trim(), family: f.get('family').trim(),
+      extra: [...document.querySelectorAll('#xrows .xrow')].map(r => ({ k: r.querySelector('.xk').value.trim(), v: r.querySelector('.xv').value.trim() })).filter(x => x.k || x.v) });
   };
 }
 
