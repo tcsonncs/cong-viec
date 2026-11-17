@@ -265,6 +265,15 @@ input,select,textarea,.btn.ghost{border-width:var(--bw,1px);border-color:var(--f
 .legend{width:100%;display:grid;gap:.4rem}
 .lg{display:grid;grid-template-columns:.8rem 1fr auto 2.6rem;gap:.5rem;align-items:center;font-size:.9rem}
 .lg i{width:.8rem;height:.8rem;border-radius:50%}
+button.lg{width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:.45rem .2rem;border-radius:.6rem;cursor:pointer;min-height:2.4rem}
+button.lg:active,.lgw.open>button.lg{background:var(--line)}
+.lg small{color:var(--mute);font-size:.75rem;white-space:nowrap;display:block}
+.lgw:last-child{margin-bottom:3.5rem}
+.lgd{margin:.1rem 0 .5rem 1.3rem;border-left:2px solid var(--line);padding-left:.5rem;display:grid;gap:.1rem}
+.lgi{display:grid;grid-template-columns:5.2rem 1fr auto;gap:.6rem;align-items:center;font-size:.85rem;padding:.4rem .2rem;border-radius:.5rem;cursor:pointer}
+.lgi:active{background:var(--line)}
+.lgi .d{color:var(--mute)}
+.lgi .n{overflow-wrap:anywhere}
 .lg em{font-style:normal;color:var(--mute);text-align:right}
 .lg .ln{overflow-wrap:anywhere}
 .dayh{display:flex;justify-content:space-between;margin:1rem .2rem .1rem;font-size:.85rem;color:var(--mute);font-weight:650}

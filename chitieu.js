@@ -19,7 +19,7 @@ export function initMoney(ctx) {
   const data = () => ctx.data();
   const store = () => ctx.store();
   const dlg = () => $('#dlg');
-  const st = { period: 'month', ref: new Date(), tab: 'chi', sub: 'tx', limit: 60 };
+  const st = { period: 'month', ref: new Date(), tab: 'chi', sub: 'tx', limit: 60, open: new Set() };
 
   const vnd = n => Math.round(n || 0).toLocaleString('vi-VN') + ' ₫';
   // Ô tóm tắt hẹp: số lớn viết gọn (triệu, tỷ); danh sách và biểu đồ vẫn hiện đủ số.
@@ -101,7 +101,14 @@ export function initMoney(ctx) {
       acc += p;
       return s;
     }).join('');
-    const legend = rows.map(r => `<div class="lg"><i style="background:${r.c ? esc(r.c.color) : '#8a8178'}"></i><span class="ln">${r.c ? esc(r.c.emoji + ' ' + r.c.name) : 'Chưa phân loại'}</span><b>${vnd(r.v)}</b><em>${Math.round(r.v / total * 100)}%</em></div>`).join('');
+    // Bấm vào một danh mục thì xổ ra các giao dịch tạo nên số tổng; bấm lại để gập; bấm một giao dịch để xem/sửa.
+    const legend = rows.map(r => {
+      const key = type + ':' + (r.c ? r.c.id : '?');
+      const isOpen = st.open.has(key);
+      const items = isOpen ? list.filter(t => t.type === type && (t.cat || '?') === (r.c ? r.c.id : '?')).sort((a, b) => b.date.localeCompare(a.date) || (b.created || '').localeCompare(a.created || '')) : [];
+      const detail = isOpen ? `<div class="lgd">${items.map(t => `<div class="lgi" data-m="tx" data-id="${t.id}" role="button" tabindex="0"><span class="d">${esc(fmt(t.date))}</span><span class="n">${esc(t.note || (walletOf(t.wallet) ? walletOf(t.wallet).name : '') || '—')}</span><b>${vnd(t.amount)}</b></div>`).join('')}</div>` : '';
+      return `<div class="lgw${isOpen ? ' open' : ''}"><button type="button" class="lg" data-m="catd" data-k="${esc(key)}" aria-expanded="${isOpen}"><i style="background:${r.c ? esc(r.c.color) : '#8a8178'}"></i><span class="ln">${r.c ? esc(r.c.emoji + ' ' + r.c.name) : 'Chưa phân loại'} <small>(${list.filter(t => t.type === type && (t.cat || '?') === (r.c ? r.c.id : '?')).length} khoản)</small></span><b>${vnd(r.v)}</b><em>${Math.round(r.v / total * 100)}%</em></button>${detail}</div>`;
+    }).join('');
     return `<div class="donutwrap"><svg viewBox="0 0 42 42" class="donut" role="img" aria-label="Biểu đồ theo danh mục">${arcs}<text x="21" y="22.2" text-anchor="middle" class="dt">${vnd(total)}</text></svg><div class="legend">${legend}</div></div>`;
   }
 
@@ -494,9 +501,10 @@ export function initMoney(ctx) {
     const a = el.dataset.m, id = el.dataset.id, d = data();
     if (a === 'sub') { st.sub = el.dataset.s; st.limit = 60; ctx.render(); window.scrollTo(0, 0); }
     else if (a === 'more-tx') { st.limit += 100; ctx.render(); }
-    else if (a === 'period') { st.period = el.dataset.p; st.limit = 60; ctx.render(); }
-    else if (a === 'prev') { shift(-1); st.limit = 60; ctx.render(); }
-    else if (a === 'next') { shift(1); st.limit = 60; ctx.render(); }
+    else if (a === 'catd') { const k = el.dataset.k; if (st.open.has(k)) st.open.delete(k); else st.open.add(k); ctx.render(); }
+    else if (a === 'period') { st.period = el.dataset.p; st.limit = 60; st.open.clear(); ctx.render(); }
+    else if (a === 'prev') { shift(-1); st.limit = 60; st.open.clear(); ctx.render(); }
+    else if (a === 'next') { shift(1); st.limit = 60; st.open.clear(); ctx.render(); }
     else if (a === 'tab') { st.tab = el.dataset.t; ctx.render(); }
     else if (a === 'tx') openTx(d.txs.find(t => t.id === id));
     else if (a === 'wallet') openWallet(d.wallets.find(w => w.id === id));
