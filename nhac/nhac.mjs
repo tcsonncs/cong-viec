@@ -15,13 +15,15 @@ const vnDate = (offset = 0, base = new Date()) =>
 const short = list => list.slice(0, 3).map(t => t.title).join('; ') + (list.length > 3 ? '…' : '');
 
 // lich: các mục lịch trường của Thầy trong hôm nay (đã lọc theo vai trò).
-export function buildMorning(tasks, today = vnDate(0), tomorrow = vnDate(1), lich = []) {
+// bds: kết quả loc.birthdaysSoon (hôm nay và ngày mai).
+export function buildMorning(tasks, today = vnDate(0), tomorrow = vnDate(1), lich = [], bds = []) {
   const open = tasks.filter(t => t.status !== 'done' && t.due);
   const over = open.filter(t => t.due < today);
   const now = open.filter(t => t.due === today);
   const tom = open.filter(t => t.due === tomorrow);
-  if (!over.length && !now.length && !tom.length && !lich.length) return null;
+  if (!over.length && !now.length && !tom.length && !lich.length && !bds.length) return null;
   const parts = [];
+  if (bds.length) parts.push('🎂 Sinh nhật: ' + bds.map(x => `${x.c.name} (${x.inDays === 0 ? 'hôm nay' : 'ngày mai'}${x.age ? ', ' + x.age + ' tuổi' : ''})`).join('; '));
   if (lich.length) parts.push('Lịch hôm nay: ' + describeDay(lich));
   if (over.length) parts.push(`Quá hạn (${over.length}): ${short(over)}`);
   if (now.length) parts.push(`Hôm nay (${now.length}): ${short(now)}`);
@@ -48,11 +50,11 @@ export function buildWeek(tasks, habits, today = vnDate(0), lichMon = []) {
 }
 
 // weeks: các tài liệu lịch tuần của trường; cfg: vai trò của Thầy.
-function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG, events = [], done = {}) {
+function build(tasks, habits, weeks = [], cfg = loc.DEFAULT_CFG, events = [], done = {}, contacts = []) {
   const mine = d => mineOnDate(weeks, cfg, d, events, done);
   if (MODE === 'week') return buildWeek(tasks, habits, vnDate(0), mine(vnDate(1)));
   if (MODE === 'evening') return buildEvening(mine(vnDate(1)));
-  return buildMorning(tasks, vnDate(0), vnDate(1), mine(vnDate(0)));
+  return buildMorning(tasks, vnDate(0), vnDate(1), mine(vnDate(0)), loc.birthdaysSoon(contacts, vnDate(0), 1));
 }
 
 async function main() {
@@ -75,7 +77,9 @@ async function main() {
       { id: 'e1', title: 'Dạy Toán 9', kind: 'pt', rep: true, weekday: new Date().getDay(), start: '14:30', end: '16:00' },
       { id: 'e2', title: 'Dạy thêm Toán 7', kind: 'them', date: m, start: '07:00', end: '09:00' }
     ];
-    console.log(MODE, JSON.stringify(build(tasks, habits, weeks, loc.DEFAULT_CFG, events), null, 2));
+    const [dd, mm, yy] = t.split('-').reverse(), [d2, m2] = m.split('-').reverse();
+    const contacts = [{ name: 'Nguyễn Văn An', birthday: `${dd}/${mm}/1985` }, { name: 'Trần Thị Lan', birthday: `${d2}/${m2}` }, { name: 'Sai định dạng', birthday: 'abc' }];
+    console.log(MODE, JSON.stringify(build(tasks, habits, weeks, loc.DEFAULT_CFG, events, {}, contacts), null, 2));
     return;
   }
 
@@ -100,9 +104,10 @@ async function main() {
       (await db.collection(`users/${uid}/${c}`).get()).docs.map(x => x.data())));
     const weeks = (await db.collection(`users/${uid}/lich`).get()).docs.map(x => x.data());
     const events = (await db.collection(`users/${uid}/events`).get()).docs.map(x => ({ ...x.data(), id: x.id }));
+    const contacts = (await db.collection(`users/${uid}/contacts`).get()).docs.map(x => ({ ...x.data(), id: x.id }));
     const cfgSnap = await db.doc(`users/${uid}/cfg/lich`).get();
     const doneSnap = await db.doc(`users/${uid}/cfg/lichdone`).get();
-    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG, events, doneSnap.exists ? doneSnap.data().done || {} : {});
+    const msg = build(tasks, habits, weeks, cfgSnap.exists ? cfgSnap.data() : loc.DEFAULT_CFG, events, doneSnap.exists ? doneSnap.data().done || {} : {}, contacts);
     if (!msg) { console.log(`Không có gì để nhắc (${MODE}).`); continue; }
     const res = await messaging.sendEach(docs.map(d => ({
       token: d.data().token,
